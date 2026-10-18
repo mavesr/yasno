@@ -390,11 +390,16 @@ public final class Detector {
         return rank(core, languages: source.languages) != nil || SystemLexicon.shared.knows(core, languages: source.languages)
     }
 
-    /// While a word is still being typed only an unmistakable address converts;
-    /// a bare host may be the prefix of a word (зароютс → pfhj.nc) and waits for Space.
+    /// While a word is still being typed only an unmistakable address converts. A
+    /// bare name.tld with a two-letter TLD may be the start of a word whose ю key
+    /// made the dot (зароютс → pfhj.nc), so it waits for Space.
     private static func isExplicitAddress(_ output: String) -> Bool {
         let lower = output.lowercased()
-        return lower.contains("://") || lower.hasPrefix("www.") || lower.contains("/")
+        if lower.contains("://") || lower.hasPrefix("www.") || lower.contains("/") { return true }
+        let host = lower.prefix(while: { !":/?#".contains($0) })
+        let labels = host.split(separator: ".")
+        return labels.count >= 3 || (labels.last?.count ?? 0) >= 3 ||
+            host.contains(where: { $0.isNumber || $0 == "-" })
     }
 
     private func suggestAddress(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout]) -> Suggestion? {
@@ -470,7 +475,7 @@ public final class Detector {
         guard word.count >= 4, !ignored.contains(word.lowercased()) else { return nil }
         guard !isNativePrefix(word, languages: source.languages) else { return nil }
         if let address = suggestAddress(word, source: source, layouts: layouts) {
-            return Self.isExplicitAddress(address.replacement) ? address : nil
+            return Self.isExplicitAddress(address.replacement) && !isValidNativeText(word, source: source) ? address : nil
         }
         let exact = suggest(word, source: source, layouts: layouts, ignored: ignored,
                             preferredTargetID: preferredTargetID, context: context, live: true)
@@ -496,7 +501,7 @@ public final class Detector {
         guard word.count >= 4, !ignored.contains(word.lowercased()),
               !isNativePrefix(word, languages: source.languages) else { return false }
         if let address = suggestAddress(word, source: source, layouts: layouts) {
-            return Self.isExplicitAddress(address.replacement)
+            return Self.isExplicitAddress(address.replacement) && !isValidNativeText(word, source: source)
         }
         var nativeAlternative: Bool?
         var prefixNativeAlternative: Bool?

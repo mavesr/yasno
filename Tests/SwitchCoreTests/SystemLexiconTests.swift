@@ -22,7 +22,7 @@ final class SystemLexiconTests: XCTestCase {
             XCTAssertNil(detector.suggestCompleted(word, source: abc, layouts: layouts, correctSpelling: true), word)
         }
         // A real slip is still repaired.
-        XCTAssertEqual(detector.suggestCompleted("приобррел", source: ru, layouts: layouts, correctSpelling: true)?.replacement, "приобрел")
+        XCTAssertEqual(detector.suggestCompleted("сегодян", source: ru, layouts: layouts, correctSpelling: true)?.replacement, "сегодня")
     }
 
     func testRussianWordsOnTheUkrainianLayoutAreNotRespelledAsUkrainian() throws {

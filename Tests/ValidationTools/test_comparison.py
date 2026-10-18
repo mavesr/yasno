@@ -75,5 +75,17 @@ class ComparisonTests(unittest.TestCase):
         (self.after / 'failures.jsonl').write_text(json.dumps(self.failure()) + '\n')
         self.assertNotEqual(self.run_compare().returncode, 0)
 
+    def test_counted_category_regressions_are_caught_without_failure_rows(self):
+        before = dict(self.report, categories={'typo/recoverable/native/ru': {'total': 10, 'passed': 8, 'missed': 2, 'different': 0}})
+        fewer = dict(self.report, categories={'typo/recoverable/native/ru': {'total': 10, 'passed': 7, 'missed': 3, 'different': 0}})
+        more = dict(self.report, categories={'typo/recoverable/native/ru': {'total': 10, 'passed': 9, 'missed': 1, 'different': 0}})
+        self.write(self.before, before, [])
+        self.write(self.after, fewer, [])
+        self.assertNotEqual(self.run_compare().returncode, 0)
+        self.write(self.after, more, [])
+        self.assertEqual(self.run_compare().returncode, 0)
+        self.write(self.after, dict(self.report, categories={}), [])
+        self.assertNotEqual(self.run_compare().returncode, 0)
+
 if __name__ == '__main__':
     unittest.main()

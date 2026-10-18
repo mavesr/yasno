@@ -38,7 +38,9 @@ enum ReplacementTransaction {
         guard valid(), commit(), e.insert(replacement) else { restoreIfOwned(); return .failed }
         let inserted = CFRange(location: range.location, length: replacement.utf16.count)
         let editDeadline = min(deadline, e.now() + e.timeout)
-        while e.text(inserted) != replacement, valid(), e.focused(), e.now() < editDeadline { e.pause() }
+        // Focus is re-checked after the wait. Polling it here costs several AX requests to the
+        // very renderer that is processing the insertion.
+        while e.text(inserted) != replacement, valid(), e.now() < editDeadline { e.pause() }
         guard valid(), e.focused(), e.text(inserted) == replacement else { restoreIfOwned(); return .failed }
         let delta = replacement.utf16.count - expected.utf16.count
         let end = caret.length == 0 ? caret.location + delta : range.location + replacement.utf16.count

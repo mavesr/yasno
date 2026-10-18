@@ -10,21 +10,37 @@ struct AccessibleEditor {
     let element: AXUIElement
     let pid: pid_t
 
-    /// Chromium enables its renderer AX tree on demand. Arc has a native shell,
-    /// so asking only that shell for its focused element can miss the web field.
-    /// Request the tree at application activation, never on the event-tap thread.
+    /// Chromium and Electron build their web AX tree only on request. Arc has a native
+    /// shell, so asking only that shell for its focused element can miss the web field.
+    /// Only AXManualAccessibility is used: AXEnhancedUserInterface is meant for VoiceOver
+    /// and slows window animations and window managers. Never call this on main.
+    private static let preparedLock = NSLock()
+    private static var prepared: Set<pid_t> = []
+
     static func prepareApplication(pid: pid_t) {
+        preparedLock.lock(); let known = prepared.contains(pid); preparedLock.unlock()
+        guard !known else { return }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
+        let attribute = "AXManualAccessibility" as CFString
+        // Chromium accepts the attribute without always reporting it as settable.
         let chromium = ["company.thebrowser.Browser", "com.google.Chrome", "com.microsoft.edgemac",
                         "com.brave.Browser", "org.chromium.Chromium"].contains(
                             NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? "")
-        for attribute in ["AXManualAccessibility", "AXEnhancedUserInterface"] {
-            var settable = DarwinBoolean(false)
-            let supported = AXUIElementIsAttributeSettable(app, attribute as CFString, &settable) == .success && settable.boolValue
-            if chromium || supported {
-                _ = AXUIElementSetAttributeValue(app, attribute as CFString, kCFBooleanTrue)
-            }
+        var settable = DarwinBoolean(false)
+        let supported = AXUIElementIsAttributeSettable(app, attribute, &settable) == .success && settable.boolValue
+        guard chromium || supported else { return }
+        _ = AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue)
+        preparedLock.lock(); prepared.insert(pid); preparedLock.unlock()
+    }
+
+    /// Return applications to their default accessibility mode at exit.
+    static func releasePreparedApplications() {
+        preparedLock.lock(); let pids = prepared; prepared = []; preparedLock.unlock()
+        for pid in pids where NSRunningApplication(processIdentifier: pid) != nil {
+            let app = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(app, 0.12)
+            _ = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanFalse)
         }
     }
 
@@ -81,12 +97,14 @@ struct AccessibleEditor {
         guard canSelect else { return nil }
         let count = token.text.utf16.count + token.suffix.utf16.count
         let deadline = min(operationDeadline ?? .infinity, ProcessInfo.processInfo.systemUptime + Self.acknowledgementTimeout)
+        var delay: TimeInterval = 0.002 // Back off: each probe is two AX requests to a busy renderer.
         repeat {
             guard ProcessInfo.processInfo.systemUptime < deadline, stillValid(), !IsSecureEventInputEnabled() else { return nil }
             if let caret = selection, caret.length == 0, caret.location >= count,
                let actual = text(in: CFRange(location: caret.location - count, length: count)),
                WordBoundary.matches(actual, word: token.text, suffix: token.suffix) { return caret }
-            Thread.sleep(forTimeInterval: 0.003)
+            Thread.sleep(forTimeInterval: delay)
+            delay = min(delay * 2, 0.016)
         } while ProcessInfo.processInfo.systemUptime < deadline
         return nil
     }
@@ -128,6 +146,15 @@ struct AccessibleEditor {
 
     typealias EditResult = ReplacementTransaction.Result
 
+    /// 2 → 4 → 8 → 16 ms between AX probes instead of a fixed 4 ms.
+    private static func backoff() -> () -> Void {
+        var delay: TimeInterval = 0.002
+        return {
+            Thread.sleep(forTimeInterval: delay)
+            delay = min(delay * 2, 0.016)
+        }
+    }
+
     func replace(range: CFRange, expected: String, replacement: String,
                  caret: CFRange, stillValid: () -> Bool, commit: () -> Bool,
                  deadline: TimeInterval? = nil) -> EditResult {
@@ -135,6 +162,6 @@ struct AccessibleEditor {
             stillValid: stillValid, commit: commit, environment: .init(
                 selection: { selection }, text: { text(in: $0) }, focused: { isFocused() },
                 canSelect: { canSelect }, select: { setSelection($0) },
-                insert: { KeyboardMonitor.insertUnicode($0, pid: pid) }, deadline: deadline))
+                insert: { KeyboardMonitor.insertUnicode($0, pid: pid) }, pause: Self.backoff(), deadline: deadline))
     }
 }

@@ -17,12 +17,14 @@ final class KeyboardMonitor {
     var onProgress: ((Token) -> Void)?
     var onManual: ((Token?) -> Void)?
     var onFault: (() -> Void)?
+    /// A capture was released by a watchdog or a disabled tap, and interception continues.
+    var onRecovered: (() -> Void)?
     var onCancelAnalysis: (() -> Void)?
     private var hasFaulted = false // Access under lock, including tap-side reads.
     var faulted: Bool { lock.lock(); defer { lock.unlock() }; return hasFaulted }
     // Layout tables, token and application state belong to main. Only gate/replay
     // routing crosses the tap/worker boundary and every such field is under lock.
-    private var activeLayouts: [KeyboardLayout] = []
+    private var activeLayouts: [KeyboardLayout] = [] { didSet { publishReplayLayout() } }
     var layouts: [KeyboardLayout] {
         get { dispatchPrecondition(condition: .onQueue(.main)); return activeLayouts }
         set { dispatchPrecondition(condition: .onQueue(.main)); activeLayouts = newValue }
@@ -38,7 +40,8 @@ final class KeyboardMonitor {
             if changed && !newValue { reset() }
         }
     }
-    private var tap: CFMachPort?
+    private var tap: CFMachPort? { didSet { lock.lock(); activeTap = tap; lock.unlock() } }
+    private var activeTap: CFMachPort? // Under lock; the tap thread re-enables a disabled tap.
     private var runLoopSource: CFRunLoopSource?
     private var tapThread: Thread?
     private var tapRunLoop: CFRunLoop? // Under lock; only for terminal shutdown.
@@ -47,7 +50,7 @@ final class KeyboardMonitor {
     private var physicalKeys: [KeyboardLayout.KeyStroke]? = []
     private var completedToken: Token?
     private var liveConverted = false
-    private var sourceID = ""
+    private var sourceID = "" { didSet { publishReplayLayout() } }
     private var pid: pid_t = 0
     private var shiftGesture = ShiftTapGesture()
     private var boundaryShiftGesture = ShiftTapGesture() // Tap-side reservation only; under lock.
@@ -63,6 +66,16 @@ final class KeyboardMonitor {
     private var replayInFlight = false
     private var replaySequence: UInt64 = 0
     private var replayAcknowledgements = 0
+    // Captured input must never depend on the main queue being alive. Every gate/replay
+    // step records progress; the tap releases input itself once progress stalls.
+    private var lastProgress: UInt64 = 0
+    private var gateOwner: UInt64?
+    private var replayLayout: KeyboardLayout? // Snapshot of the selected layout for tap-side release.
+    private var recentFailures: [UInt64] = [] // Main only.
+    private let captureTimeout: UInt64
+    private let failureWindow: UInt64 = 60_000_000_000
+    private let failureBudget: Int
+    private let clock: () -> UInt64
     // Key-up is safe to deliver while AX is editing; delaying it turns a short
     // physical press into a long press and can summon the system accent picker.
     private var deliveredKeys: Set<Int64> = []
@@ -79,8 +92,13 @@ final class KeyboardMonitor {
     init(postEvent: @escaping (CGEvent) -> Void = { $0.post(tap: .cgSessionEventTap) },
          currentSourceID: @escaping () -> String = KeyboardLayout.currentID,
          currentPID: @escaping () -> pid_t = { NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0 },
-         secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() }) {
+         secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() },
+         captureTimeout: TimeInterval = 1.0, failureBudget: Int = 3,
+         clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }) {
         self.postEvent = postEvent
+        self.captureTimeout = UInt64(max(captureTimeout, 0.05) * 1_000_000_000)
+        self.failureBudget = max(failureBudget, 1)
+        self.clock = clock
         self.currentSourceID = currentSourceID
         self.currentPID = currentPID
         self.secureInputEnabled = secureInputEnabled
@@ -102,6 +120,8 @@ final class KeyboardMonitor {
         boundaryReserved = false
         gated = true
         committing = false
+        gateOwner = revision
+        lastProgress = clock()
         return true
     }
 
@@ -109,6 +129,7 @@ final class KeyboardMonitor {
         lock.lock(); defer { lock.unlock() }
         guard gated, generation == revision else { return false }
         committing = true
+        lastProgress = clock()
         return true
     }
 
@@ -126,10 +147,14 @@ final class KeyboardMonitor {
         pid = newPID
     }
 
-    func endGate() {
+    /// Pass the revision given to beginGate. A gate already released by the watchdog
+    /// must not end a newer gate when the stalled worker finally finishes.
+    func endGate(revision: UInt64? = nil) {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock()
-        gated = false; committing = false
+        if let revision, gateOwner != revision { lock.unlock(); return }
+        gated = false; committing = false; gateOwner = nil
+        lastProgress = clock()
         draining = !hasFaulted
         let canDrain = !hasFaulted
         lock.unlock()
@@ -160,10 +185,12 @@ final class KeyboardMonitor {
         }
         draining = true; replayInFlight = true; replaySequence &+= 1
         replayAcknowledgements = batch.count
+        lastProgress = clock()
         let sequence = replaySequence
+        let layout = replayLayout
         lock.unlock()
         for item in batch {
-            prepareReplay(item, tag: replayTag)
+            prepare(item, tag: replayTag, layout: layout)
             postEvent(item)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
@@ -176,12 +203,16 @@ final class KeyboardMonitor {
         }
     }
 
-    private func prepareReplay(_ event: CGEvent, tag: Int64) {
-        dispatchPrecondition(condition: .onQueue(.main))
+    private func publishReplayLayout() {
+        let layout = activeLayouts.first { $0.id == sourceID }
+        lock.lock(); replayLayout = layout; lock.unlock()
+    }
+
+    /// Safe on any thread: the layout is an immutable snapshot taken under lock.
+    private func prepare(_ event: CGEvent, tag: Int64, layout: KeyboardLayout?) {
         // A captured event belongs to another event source: mutating its userData field
         // alone can silently retain the original tag. Give the copy our own source.
         if let replaySource { EventReplay.rebind(event, source: replaySource, tag: tag) }
-        let layout = layouts.first { $0.id == sourceID }
         event.setIntegerValueField(.eventSourceUserData, value: tag)
         if event.type == .keyDown || event.type == .keyUp,
                event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty,
@@ -198,19 +229,52 @@ final class KeyboardMonitor {
         }
     }
 
+    /// Release all captured input. A single transient failure (a tap disabled by the
+    /// system after sleep or load, one lost replay, a stalled UI queue) only resets the
+    /// current word; interception stops for good only after repeated failures.
     private func failOpen() {
         dispatchPrecondition(condition: .onQueue(.main))
+        let now = clock()
+        recentFailures = recentFailures.filter { now &- $0 < failureWindow } + [now]
+        let permanent = recentFailures.count >= failureBudget
         lock.lock()
         let remaining = pending
+        clearCapture()
+        generation &+= 1
+        if permanent { hasFaulted = true }
+        let layout = replayLayout, halted = stopped
+        lock.unlock()
+        if permanent { enabled = false } else { reset() }
+        // A failed replay must never leave the keyboard or mouse captured indefinitely.
+        for event in remaining { prepare(event, tag: Self.editTag, layout: layout); postEvent(event) }
+        guard !halted else { return }
+        if permanent { onFault?() } else { onRecovered?() }
+    }
+
+    /// Caller holds lock.
+    private func clearCapture() {
         pending = []; gated = false; boundaryReserved = false; boundaryCancelled = false
         draining = false; committing = false; replayInFlight = false; replayAcknowledgements = 0
+        gateOwner = nil
+    }
+
+    /// Tap thread. Releases captured input without the main queue once no gate or replay
+    /// step has progressed for captureTimeout, then reports the failure to main.
+    private func releaseIfStalled(postAtTap: ((CGEvent) -> Void)?) -> Bool {
+        lock.lock()
+        let capturing = gated || draining || boundaryReserved || replayInFlight || !pending.isEmpty
+        guard capturing, clock() &- lastProgress > captureTimeout else { lock.unlock(); return false }
+        let remaining = pending
+        clearCapture()
         generation &+= 1
-        hasFaulted = true
+        let layout = replayLayout
         lock.unlock()
-        enabled = false
-        // A failed replay must never leave the keyboard or mouse captured indefinitely.
-        for event in remaining { prepareReplay(event, tag: Self.editTag); postEvent(event) }
-        onFault?()
+        for event in remaining {
+            prepare(event, tag: Self.editTag, layout: layout)
+            if let postAtTap { postAtTap(event) } else { postEvent(event) }
+        }
+        DispatchQueue.main.async { [weak self] in self?.failOpen() }
+        return true
     }
 
     private func replayDelivered() {
@@ -219,6 +283,7 @@ final class KeyboardMonitor {
         replayAcknowledgements -= 1
         let complete = replayAcknowledgements <= 0
         if complete { replayInFlight = false }
+        lastProgress = clock()
         lock.unlock()
         guard complete else { return }
         // The current callback must return before forwarding the next queued event.
@@ -263,6 +328,7 @@ final class KeyboardMonitor {
         let boundary = event.type == .keyDown && key == 49 && clean
         guard boundary || shiftTap, !gated, !draining, !boundaryReserved else { return false }
         boundaryReserved = true; boundaryCancelled = false
+        lastProgress = clock()
         return true
     }
 
@@ -271,6 +337,7 @@ final class KeyboardMonitor {
         lock.lock()
         let unused = boundaryReserved
         if unused { boundaryReserved = false; boundaryCancelled = false; draining = !hasFaulted }
+        lastProgress = clock()
         lock.unlock()
         if unused { drainNext() }
     }
@@ -300,10 +367,18 @@ final class KeyboardMonitor {
     func handleTapEvent(_ type: CGEventType, _ event: CGEvent,
                         postAtTap: ((CGEvent) -> Void)? = nil) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            // The system disables taps after sleep, user switching or load. Re-enable here;
+            // waiting for main would leave the tap off while the UI queue is busy.
+            lock.lock(); let port = activeTap, halted = stopped; lock.unlock()
+            if let port, !halted { CGEvent.tapEnable(tap: port, enable: true) }
             DispatchQueue.main.async { [weak self] in self?.failOpen() }
         } else {
             let tag = event.getIntegerValueField(.eventSourceUserData)
             if tag == Self.editTag { return Unmanaged.passUnretained(event) }
+            if tag != replayTag, releaseIfStalled(postAtTap: postAtTap), let postAtTap {
+                // Earlier captured input was just posted at this tap; keep this event after it.
+                postAtTap(event); return nil
+            }
             if captureIfGated(event) { return nil }
             if tag != Self.editTag {
                 let key = event.getIntegerValueField(.keyboardEventKeycode)
@@ -315,7 +390,12 @@ final class KeyboardMonitor {
                     else { replayedDowns.removeValue(forKey: key) }
                 }
                 if type == .keyUp { deliveredKeys.remove(key); down = replayedDowns.removeValue(forKey: key) }
-                let idle = !acceptingInput && !gated && !draining && !boundaryReserved && tag != replayTag
+                // Mouse releases and drags only matter to a pending Shift tap. Do not copy and
+                // publish each of them (60–120 per second while dragging) to main otherwise.
+                let mouseTail = [CGEventType.leftMouseUp, .rightMouseUp, .otherMouseUp,
+                                 .leftMouseDragged, .rightMouseDragged, .otherMouseDragged].contains(type)
+                let quiet = !acceptingInput || (mouseTail && !boundaryShiftGesture.isPressed)
+                let idle = quiet && !gated && !draining && !boundaryReserved && tag != replayTag
                 // Invalidate delayed analysis as soon as navigation reaches the tap,
                 // even while the UI queue has not observed Enter yet.
                 if type == .keyDown && [36, 76, 48, 53, 123, 124, 125, 126].contains(key) { generation &+= 1 }
@@ -410,11 +490,10 @@ final class KeyboardMonitor {
         enabled = false
         lock.lock()
         stopped = true
-        let remaining = pending, loop = tapRunLoop
-        pending = []; gated = false; draining = false; boundaryReserved = false
-        boundaryCancelled = false; committing = false; replayInFlight = false; replayAcknowledgements = 0
+        let remaining = pending, loop = tapRunLoop, layout = replayLayout
+        clearCapture()
         lock.unlock()
-        for event in remaining { prepareReplay(event, tag: Self.editTag); postEvent(event) }
+        for event in remaining { prepare(event, tag: Self.editTag, layout: layout); postEvent(event) }
         if let tap { CGEvent.tapEnable(tap: tap, enable: false); CFMachPortInvalidate(tap) }
         if let source = runLoopSource { CFRunLoopSourceInvalidate(source) }
         if let loop {
@@ -427,10 +506,10 @@ final class KeyboardMonitor {
     private func receive(_ type: CGEventType, _ event: CGEvent) {
         dispatchPrecondition(condition: .onQueue(.main))
         if event.getIntegerValueField(.eventSourceUserData) == Self.editTag { return }
-        guard enabled, !secureInputEnabled() else { reset(); return }
         // Releasing a key pressed before Shift does not make this a Shift chord.
         // In particular Space-up often overlaps the following standalone Shift tap.
         if type == .keyUp { return }
+        guard enabled, !secureInputEnabled() else { reset(); return }
         if type == .leftMouseUp || type == .rightMouseUp || type == .otherMouseUp ||
            type == .leftMouseDragged || type == .rightMouseDragged || type == .otherMouseDragged {
             shiftGesture.cancel()

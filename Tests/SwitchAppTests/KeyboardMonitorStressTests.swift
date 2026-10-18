@@ -338,7 +338,8 @@ final class KeyboardMonitorStressTests: XCTestCase {
         let active = try layouts()
         let fault = expectation(description: "missing replay acknowledgement fails open")
         var posted: [Signature] = []
-        let monitor = KeyboardMonitor(postEvent: { posted.append(Signature($0)) }, currentSourceID: { active[0].id }, currentPID: { 123 }, secureInputEnabled: { false })
+        let monitor = KeyboardMonitor(postEvent: { posted.append(Signature($0)) }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false }, failureBudget: 1)
         monitor.layouts = active; monitor.enabled = true
         monitor.onFault = { fault.fulfill() }
         XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
@@ -367,5 +368,87 @@ final class KeyboardMonitorStressTests: XCTestCase {
         rig.send(try key(11)); rig.send(try key(49))
         await flush(); await flush()
         XCTAssertEqual(rig.completed.last?.text, "b")
+    }
+
+    func testSingleDroppedAcknowledgementRecoversWithoutDisablingInterception() async throws {
+        let active = try layouts()
+        let recovered = expectation(description: "transient failure recovers")
+        var posted: [Signature] = []
+        let monitor = KeyboardMonitor(postEvent: { posted.append(Signature($0)) }, currentSourceID: { active[0].id }, currentPID: { 123 }, secureInputEnabled: { false })
+        monitor.layouts = active; monitor.enabled = true
+        monitor.onFault = { XCTFail("one lost replay must not disable interception") }
+        monitor.onRecovered = { recovered.fulfill() }
+        XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+        let events = try [key(0), key(0, down: false), key(11), key(11, down: false)]
+        for event in events { XCTAssertNil(monitor.handleTapEvent(event.type, event)) }
+        monitor.endGate()
+        await fulfillment(of: [recovered], timeout: 2)
+        XCTAssertEqual(posted, events.map(Signature.init))
+        XCTAssertFalse(monitor.faulted)
+        XCTAssertTrue(monitor.enabled)
+        XCTAssertFalse(monitor.hasPendingInput)
+    }
+
+    func testRepeatedFailuresWithinTheWindowDisableInterception() async throws {
+        let active = try layouts()
+        let monitor = KeyboardMonitor(postEvent: { _ in }, currentSourceID: { active[0].id }, currentPID: { 123 }, secureInputEnabled: { false })
+        monitor.layouts = active; monitor.enabled = true
+        var faults = 0, recoveries = 0
+        monitor.onFault = { faults += 1 }
+        monitor.onRecovered = { recoveries += 1 }
+        let disabled = try key(0)
+        for _ in 0..<3 { _ = monitor.handleTapEvent(.tapDisabledByTimeout, disabled); await flush() }
+        XCTAssertEqual(recoveries, 2)
+        XCTAssertEqual(faults, 1)
+        XCTAssertTrue(monitor.faulted)
+        XCTAssertFalse(monitor.enabled)
+    }
+
+    func testStalledMainQueueCannotKeepInputCaptured() async throws {
+        let active = try layouts()
+        var now: UInt64 = 5_000_000_000
+        var posted: [Signature] = [], forwarded: [Signature] = []
+        let monitor = KeyboardMonitor(postEvent: { posted.append(Signature($0)) }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false }, captureTimeout: 0.5, clock: { now })
+        monitor.layouts = active; monitor.enabled = true
+        let recovered = expectation(description: "watchdog reports to main")
+        monitor.onRecovered = { recovered.fulfill() }
+        XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+        let held = try [key(0), key(0, down: false)]
+        for event in held { XCTAssertNil(monitor.handleTapEvent(event.type, event, postAtTap: { forwarded.append(Signature($0)) })) }
+        XCTAssertTrue(forwarded.isEmpty, "input is held while the gate makes progress")
+        // Main never ends the gate. The next physical event arrives after the timeout.
+        now += 600_000_000
+        let next = try key(11)
+        XCTAssertNil(monitor.handleTapEvent(next.type, next, postAtTap: { forwarded.append(Signature($0)) }))
+        XCTAssertEqual(forwarded, (held + [next]).map(Signature.init), "held input is released first, in order, without main")
+        XCTAssertTrue(posted.isEmpty)
+        XCTAssertFalse(monitor.hasPendingInput)
+        await fulfillment(of: [recovered], timeout: 2)
+        XCTAssertFalse(monitor.faulted)
+        XCTAssertTrue(monitor.enabled)
+        let after = try key(11, down: false)
+        XCTAssertNotNil(monitor.handleTapEvent(after.type, after, postAtTap: { forwarded.append(Signature($0)) }))
+    }
+
+    func testStaleEndGateDoesNotReleaseANewerGate() async throws {
+        let active = try layouts()
+        var now: UInt64 = 5_000_000_000
+        let monitor = KeyboardMonitor(postEvent: { _ in }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false }, captureTimeout: 0.5, clock: { now })
+        monitor.layouts = active; monitor.enabled = true
+        let first = monitor.revision
+        XCTAssertTrue(monitor.beginGate(revision: first))
+        now += 600_000_000
+        let stray = try key(0)
+        _ = monitor.handleTapEvent(stray.type, stray, postAtTap: { _ in })
+        await flush()
+        let second = monitor.revision
+        XCTAssertTrue(monitor.beginGate(revision: second))
+        monitor.endGate(revision: first) // the stalled worker finishes late
+        XCTAssertTrue(monitor.hasPendingInput, "the newer gate must stay closed")
+        let typed = try key(11)
+        XCTAssertNil(monitor.handleTapEvent(typed.type, typed))
+        monitor.endGate(revision: second)
     }
 }

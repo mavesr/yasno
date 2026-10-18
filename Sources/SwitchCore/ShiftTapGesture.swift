@@ -9,6 +9,9 @@ public struct ShiftTapGesture {
 
     public init() {}
 
+    /// A Shift press that a later mouse action could still turn into a chord.
+    public var isPressed: Bool { down != nil }
+
     public mutating func reset() {
         down = nil
         blockedUntilRelease = false

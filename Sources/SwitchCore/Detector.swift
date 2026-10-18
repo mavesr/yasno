@@ -15,11 +15,13 @@ public final class Detector {
         let counts: [Language: Int]
     }
     private static let shared = loadStorage()
-    private var ranks: [Language: [String: Int]] { Self.shared.ranks }
-    private var sortedWords: [Language: [String]] { Self.shared.sortedWords }
-    public var counts: [Language: Int] { Self.shared.counts }
+    // One reference per instance: hot loops then avoid the static once-check on every lookup.
+    private let storage: Storage
+    private var ranks: [Language: [String: Int]] { storage.ranks }
+    private var sortedWords: [Language: [String]] { storage.sortedWords }
+    public var counts: [Language: Int] { storage.counts }
 
-    public init() { _ = Self.shared }
+    public init() { storage = Self.shared }
 
     private static func loadStorage() -> Storage {
         var ranks: [Language: [String: Int]] = [:]
@@ -65,7 +67,12 @@ public final class Detector {
     }
 
     func rankLowercased(_ lower: String, languages: [Language]) -> Int? {
-        return languages.compactMap { ranks[$0]?[lower] }.min()
+        // Called for every spelling neighbor candidate; avoid an array per lookup.
+        var best: Int?
+        for language in languages {
+            if let rank = storage.ranks[language]?[lower], best.map({ rank < $0 }) ?? true { best = rank }
+        }
+        return best
     }
 
     /// Frequency corpora miss compounds such as app + store and screen + shot.

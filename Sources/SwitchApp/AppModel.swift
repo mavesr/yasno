@@ -19,13 +19,23 @@ final class AppModel: ObservableObject {
     @Published var corrections = 0
     @Published var correctSpelling: Bool { didSet { UserDefaults.standard.set(correctSpelling, forKey: "correctSpelling"); monitor.reset() } }
     let monitor = KeyboardMonitor()
-    let detector = Detector()
+    // Loaded on the worker (about 0.25 s of dictionary parsing), never on main at launch.
+    // Only the serial worker touches it, so the lazy initialization is not shared.
+    private(set) lazy var detector = Detector()
     private let worker = DispatchQueue(label: "local.yasno.analysis", qos: .userInitiated)
+    // Setup IPC to other applications must never run on main: the event tap waits for main.
+    // Worker only. A field that could not confirm its caret in time skips live correction
+    // for a while instead of holding every following keystroke for another timeout.
+    private var liveBlocked: (element: AXUIElement, until: TimeInterval)?
+    private let accessibilityQueue = DispatchQueue(label: "local.yasno.accessibility", qos: .utility)
     private var layouts: [KeyboardLayout] = []
     private var timer: Timer?
     private var sourceObserver: NSObjectProtocol?
     private var layoutsObserver: NSObjectProtocol?
     private var appObserver: NSObjectProtocol?
+    private var launchObserver: NSObjectProtocol?
+    private var terminateObserver: NSObjectProtocol?
+    private static let carambaID = "tech.caramba.switcher"
     private var preferred: [String: String]
     private var globalPreferred: String?
     private var automaticSource: String?
@@ -90,6 +100,10 @@ final class AppModel: ObservableObject {
             self?.detail = "Перехват приостановлен после сбоя доставки событий. Перезапустите Ясно."
             self?.refresh()
         }
+        monitor.onRecovered = { [weak self] in
+            self?.receipt = nil
+            self?.detail = "Ввод был задержан и отпущен без исправления."
+        }
         sourceObserver = DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil, queue: .main
         ) { [weak self] _ in self?.sourceChanged() }
@@ -104,6 +118,21 @@ final class AppModel: ObservableObject {
             if pid != self.activePID { self.activePID = pid; self.monitor.syncApplication(pid) }
             self.refresh()
         }
+        // Caramba is tracked by launch/termination notifications instead of enumerating
+        // all running applications on every refresh.
+        carambaRunning = !NSRunningApplication.runningApplications(withBundleIdentifier: Self.carambaID).isEmpty
+        let center = NSWorkspace.shared.notificationCenter
+        launchObserver = center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Self.carambaID else { return }
+            self?.update(\.carambaRunning, true); self?.refresh()
+        }
+        terminateObserver = center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Self.carambaID else { return }
+            self?.update(\.carambaRunning, !NSRunningApplication.runningApplications(withBundleIdentifier: Self.carambaID).isEmpty)
+            self?.refresh()
+        }
+        update(\.loginEnabled, SMAppService.mainApp.status == .enabled)
+        worker.async { [self] in _ = detector }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refresh() }
     }
@@ -121,13 +150,17 @@ final class AppModel: ObservableObject {
         timer?.invalidate(); timer = nil
         if let sourceObserver { DistributedNotificationCenter.default().removeObserver(sourceObserver) }
         if let layoutsObserver { DistributedNotificationCenter.default().removeObserver(layoutsObserver) }
-        if let appObserver { NSWorkspace.shared.notificationCenter.removeObserver(appObserver) }
-        sourceObserver = nil; layoutsObserver = nil; appObserver = nil
+        for observer in [appObserver, launchObserver, terminateObserver].compactMap({ $0 }) {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        sourceObserver = nil; layoutsObserver = nil; appObserver = nil; launchObserver = nil; terminateObserver = nil
         if let focusObserver { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(focusObserver), .commonModes) }
         focusObserver = nil
+        accessibilityQueue.async { AccessibleEditor.releasePreparedApplications() }
         // Do not replay keys into a word that is still temporarily selected. The
         // barrier waits for AX cleanup, then allow replay acknowledgements to drain.
         worker.async { [self] in
+            accessibilityQueue.sync {}
             DispatchQueue.main.async { self.finishShutdown(completion: completion) }
         }
     }
@@ -177,11 +210,13 @@ final class AppModel: ObservableObject {
         guard !shuttingDown else { return }
         update(\.accessibility, AXIsProcessTrusted())
         update(\.inputMonitoring, CGPreflightListenEventAccess())
-        update(\.carambaRunning, !NSRunningApplication.runningApplications(withBundleIdentifier: "tech.caramba.switcher").isEmpty)
         update(\.secureInput, IsSecureEventInputEnabled())
         if keyboardType != UInt32(LMGetKbdType()) { reloadLayouts() }
-        update(\.loginEnabled, SMAppService.mainApp.status == .enabled)
         let app = NSWorkspace.shared.frontmostApplication
+        // Login item status is an XPC query and only visible in our own window.
+        if app?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+            update(\.loginEnabled, SMAppService.mainApp.status == .enabled)
+        }
         activePID = app?.processIdentifier ?? 0
         monitor.syncApplication(activePID)
         if accessibility, let pid = app?.processIdentifier, pid != observedPID { observeFocus(pid: pid) }
@@ -236,15 +271,17 @@ final class AppModel: ObservableObject {
         }
         focusObserver = nil
         observedPID = pid
-        AccessibleEditor.prepareApplication(pid: pid)
-        focusedElement = AccessibleEditor.focused(pid: pid)?.element
+        focusedElement = nil
+        accessibilityQueue.async { AccessibleEditor.prepareApplication(pid: pid) }
         var observer: AXObserver?
-        let callback: AXObserverCallback = { _, _, _, context in
+        // The notification carries the new element; no AX request is made on main.
+        let callback: AXObserverCallback = { _, element, notification, context in
             guard let context else { return }
             let model = Unmanaged<AppModel>.fromOpaque(context).takeUnretainedValue()
-            guard let current = AccessibleEditor.focused(pid: model.observedPID)?.element else { return }
-            if let previous = model.focusedElement, CFEqual(current, previous) { return }
-            model.focusedElement = current
+            if CFEqual(notification, kAXFocusedUIElementChangedNotification as CFString) {
+                if let previous = model.focusedElement, CFEqual(element, previous) { return }
+                model.focusedElement = element
+            } else { model.focusedElement = nil }
             model.monitor.reset()
         }
         guard AXObserverCreate(pid, callback, &observer) == .success, let observer else { return }
@@ -317,7 +354,7 @@ final class AppModel: ObservableObject {
         // the gate without touching AX or doing browser IPC.
         guard monitor.beginGate(revision: token.revision) else { return }
         worker.async { [self] in
-            defer { DispatchQueue.main.async { self.monitor.endGate() } }
+            defer { DispatchQueue.main.async { self.monitor.endGate(revision: token.revision) } }
             guard self.monitor.revision == token.revision else { return }
             let possible = token.liveConverted
                 ? self.detector.suggestSpelling(token.text, source: source, layouts: layouts, ignored: ignored, preferredTargetID: preferredID) != nil
@@ -328,11 +365,19 @@ final class AppModel: ObservableObject {
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else { return }
+            if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
+               ProcessInfo.processInfo.systemUptime < blocked.until { return }
             let suffix = token.text + token.suffix
             // Key delivery and AX updates are asynchronous. Confirm the exact suffix
             // while later physical input is held, including a word with no trailing space.
             guard let caret = editor.waitForCaret(after: token, deadline: deadline,
-                stillValid: { self.monitor.revision == token.revision }) else { return }
+                stillValid: { self.monitor.revision == token.revision }) else {
+                // Only a genuine timeout counts; newer input invalidating the wait does not.
+                if whileTyping, self.monitor.revision == token.revision {
+                    self.liveBlocked = (editor.element, ProcessInfo.processInfo.systemUptime + 30)
+                }
+                return
+            }
             let suffixRange = CFRange(location: caret.location - suffix.utf16.count, length: suffix.utf16.count)
             let contextCount = min(suffixRange.location, 256)
             let context = contextCount > 0
@@ -376,7 +421,9 @@ final class AppModel: ObservableObject {
                                   ? caret.location + replacement.utf16.count - range.length
                                   : range.location + replacement.utf16.count, length: 0), sourceID: sourceID,
                               layoutID: target.id, cycle: cycle, live: live, physicalKeys: physicalKeys)
-            if editor.isFocused() {
+            // The transaction confirmed focus just before returning. Repeating the full AX
+            // focus lookup here would hold queued input on main for no extra safety.
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == editor.pid {
                 if cycle != nil {
                     guard selectManually(target, bundleID: NSRunningApplication(processIdentifier: editor.pid)?.bundleIdentifier) else { return }
                 } else if !selectLayout(target) { detail = "Текст исправлен, но раскладку переключить не удалось."; return }
@@ -426,7 +473,7 @@ final class AppModel: ObservableObject {
         guard monitor.beginGate(revision: revision) else { return }
         worker.async { [weak self] in
             guard let self else { return }
-            defer { DispatchQueue.main.async { self.monitor.endGate() } }
+            defer { DispatchQueue.main.async { self.monitor.endGate(revision: revision) } }
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             func switchOnly() {
                 // A known typed word means "convert this word", never silently switch

@@ -57,6 +57,7 @@ public final class KeyboardLayout {
             }
           }
         }
+        apostropheGlyph = Self.apostrophe(forward: forward, reverse: reverse)
     }
 
     private func translate(key: UInt16, shift: Bool) -> String? {
@@ -75,7 +76,10 @@ public final class KeyboardLayout {
         forward[key | (shift ? 0x100 : 0)]
     }
 
-    var apostropheGlyph: String {
+    /// Computed once at init: convert() asks for it for every apostrophe character.
+    private(set) var apostropheGlyph = "'"
+
+    private static func apostrophe(forward: [UInt16: String], reverse: [String: UInt16]) -> String {
         // Prefer a normal, unshifted key before compatibility/JIS alternatives.
         for key in Array(UInt16(0)...50) + [93, 94] {
             if let glyph = forward[key], glyph.count == 1, glyph.first.map({ WordText.apostrophes.contains($0) }) == true { return glyph }

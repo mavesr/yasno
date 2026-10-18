@@ -60,6 +60,24 @@ final class SystemLexiconTests: XCTestCase {
         }
     }
 
+    func testShortAndRareWordsAreRepaired() throws {
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let layouts = [abc, ru, uk]
+        // Three- and four-letter words make up most missed slips in real sentences.
+        for (typed, expected) in [("тчо", "что"), ("тэо", "это"), ("дял", "для"), ("еещ", "еще"), ("hte", "the")] {
+            let source = typed.first!.isASCII ? abc : ru
+            XCTAssertEqual(detector.suggestCompleted(typed, source: source, layouts: layouts, correctSpelling: true)?.replacement,
+                           expected, typed)
+        }
+        // Long inflections missing from the frequency list come from the spelling service.
+        for (typed, expected) in [("коробкгй", "коробкой"), ("голубхы", "голубых")] {
+            XCTAssertEqual(detector.suggestCompleted(typed, source: ru, layouts: layouts, correctSpelling: true)?.replacement,
+                           expected, typed)
+        }
+        // A lowercase name or rare valid form is not respelled.
+        XCTAssertNil(detector.suggestCompleted("кошмарит", source: ru, layouts: layouts, correctSpelling: true))
+    }
+
     func testShortTechWordsConvertFromThreeKeys() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
         XCTAssertEqual(detector.suggest("шщы", source: ru, layouts: [abc, ru, uk])?.replacement, "ios")

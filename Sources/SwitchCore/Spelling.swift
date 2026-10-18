@@ -103,26 +103,19 @@ extension Detector {
         }
         // Merge identical RU/UK output for probability comparison, retaining the chosen
         // layout only when context / explicit preference can resolve that ambiguity.
-        // The spelling service knows forms the frequency list lacks. Another close word
-        // it knows means abstention; its single suggestion can confirm a rare word or,
-        // for longer words, stand in for a missing one (приобррел → приобрел).
-        let systemGuesses = source.languages.reduce(into: [String]()) { result, language in
-            for guess in SystemLexicon.shared.oneEditGuesses(rawCore, language: language) where !result.contains(guess) {
-                result.append(guess)
-            }
-        }
-        if candidates.isEmpty, systemGuesses.count == 1, core.count >= 6, Self.sameScript(systemGuesses[0], core) {
-            candidates.append(Candidate(text: systemGuesses[0], target: source, rank: 30_000))
-        }
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
         guard let best = candidates.first else { return nil }
-        let confirmed = systemGuesses == [best.text] && core.count >= 6
-        guard best.rank <= 20_000 || confirmed else { return nil }
         // Frequency is not proof of intent: even a rare alternative can be the
         // intended inflection. Any other dictionary candidate means abstention.
         guard !candidates.contains(where: { $0.text != best.text }) else { return nil }
-        if best.target.id == source.id || Self.sameScript(best.text, core) {
-            guard !systemGuesses.contains(where: { $0 != best.text }) else { return nil }
+        // A rarer word (приобррел → приобрел) needs the spelling service to agree that it
+        // is the only close word. Scenario runs showed that letting the service propose
+        // words itself, or veto on its rare suggestions, costs more than it gains.
+        if best.rank > 20_000 {
+            guard best.rank <= 50_000, core.count >= 6, best.target.id == source.id,
+                  source.languages.contains(where: {
+                      SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) == [best.text]
+                  }) else { return nil }
         }
         let identical = candidates.filter { $0.text == best.text }
         let contextual = spellingContextPreference(context, candidates: identical.map(\.target)) ?? preferredTargetID
@@ -136,11 +129,6 @@ extension Detector {
         guard !ignored.contains(output.lowercased()), !ignored.contains(WordText.canonical(output.lowercased())) else { return nil }
         return Suggestion(original: word, replacement: output + suffix, target: chosen.target,
                           score: log10(50_001 / Double(chosen.rank)))
-    }
-
-    private static func sameScript(_ a: String, _ b: String) -> Bool {
-        func cyrillic(_ text: String) -> Bool { text.unicodeScalars.contains { (0x400...0x4ff).contains($0.value) } }
-        return cyrillic(a) == cyrillic(b)
     }
 
     private static let commonMisspellings = [

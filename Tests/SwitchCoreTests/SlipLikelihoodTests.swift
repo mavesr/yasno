@@ -22,5 +22,4 @@ final class SlipLikelihoodTests: XCTestCase {
         XCTAssertEqual(abc.key(for: "a"), 0)
         XCTAssertEqual(abc.key(for: "A"), 0)
     }
-
 }

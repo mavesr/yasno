@@ -285,9 +285,13 @@ public final class Detector {
         if !manual, sourceRank == nil, baseWord.count >= 4,
            SystemLexicon.shared.knows(baseWord, languages: validLanguages) { return nil }
         // Avoid touching code identifiers and acronyms. Title case remains supported.
+        // A finished word in capitals (HFCNDJHS → РАСТВОРЫ) may convert when it spells a
+        // dictionary word; shorter capitals are usually acronyms.
+        let capitals = letters.count > 1 && letters == letters.uppercased()
+        let capitalWord = capitals && !live && letters.count >= 4
         if !manual {
-            if letters.count > 1 && letters == letters.uppercased() { return nil }
-            if letters.dropFirst().contains(where: \.isUppercase) { return nil }
+            if capitals && !capitalWord { return nil }
+            if !capitals && letters.dropFirst().contains(where: \.isUppercase) { return nil }
         }
 
         var candidates: [Suggestion] = []
@@ -314,8 +318,9 @@ public final class Detector {
             } else { continue }
             if !manual {
                 let outputLetters = converted.filter(\.isLetter)
-                if outputLetters.count > 1 && outputLetters == outputLetters.uppercased() { continue }
-                if outputLetters.dropFirst().contains(where: \.isUppercase) { continue }
+                let outputCapitals = outputLetters.count > 1 && outputLetters == outputLetters.uppercased()
+                if outputCapitals && !(capitalWord && dictionaryRank.map { $0 <= 20_000 } == true) { continue }
+                if !outputCapitals && outputLetters.dropFirst().contains(where: \.isUppercase) { continue }
             }
             let apostropheWord = target.languages.contains(.ukrainian) && converted.contains(where: { WordText.apostrophes.contains($0) }) && WordText.isOrthographicWord(converted)
             let maxRank = manual || apostropheWord ? 50_000 : (word.count == 2 ? 2_000 : (word.count == 3 ? 4_000 : 50_000))

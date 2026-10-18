@@ -295,9 +295,13 @@ public final class Detector {
             guard let converted = source.convert(word, to: target), converted != word else { continue }
             // Judge the word without punctuation the target layout puts at its end: the Mac
             // Russian layout types , and . with Shift-6/7, which ABC renders as ^ and &.
+            // Literal punctuation typed in the source (ымёя, → імʼя,) stays literal; the
+            // fallback below keeps it as typed.
             let (convertedCore, convertedSuffix) = WordText.coreAndSuffix(converted)
+            let typedSymbols = !convertedSuffix.isEmpty &&
+                !word.suffix(convertedSuffix.count).contains(where: WordText.suffixPunctuation.contains)
             let dictionaryRank = rank(converted, languages: target.languages)
-                ?? (convertedSuffix.isEmpty || convertedCore.isEmpty ? nil : rank(convertedCore, languages: target.languages))
+                ?? (typedSymbols && !convertedCore.isEmpty ? rank(convertedCore, languages: target.languages) : nil)
             let candidateRank: Int
             if let dictionaryRank { candidateRank = dictionaryRank }
             else if sourceRank == nil, convertedCore.count >= 5,

@@ -115,10 +115,10 @@ extension Detector {
         // is far likelier (much more frequent and an equally or more natural slip).
         // The same word spelled the RU and the UK way (компьютер / комп'ютер) is a
         // language choice: it needs the sentence so far to be in the winner's language.
-        // A capitalized word may be a name (Danek), so it needs a far wider margin.
+        // A capitalized word may be a name (Danek), so it needs a wider margin.
         if let rival = candidates.filter({ $0.text != best.text }).max(by: { $0.weight < $1.weight }) {
             let leader = candidates.filter { $0.text != rival.text }.max(by: { $0.weight < $1.weight }) ?? best
-            let margin = Self.ambiguityMargin * (core.first?.isUppercase == true ? 10 : 1)
+            let margin = Self.ambiguityMargin * (core.first?.isUppercase == true ? 3 : 1)
             guard leader.text == best.text, leader.weight >= margin * rival.weight else { return nil }
             let counterparts = candidates.filter {
                 $0.target.id != best.target.id && Self.areCognates($0.text, best.text)

@@ -113,9 +113,13 @@ extension Detector {
         // Frequency is not proof of intent: even a rare alternative can be the
         // intended inflection. Another candidate means abstention unless the best one
         // is far likelier (much more frequent and an equally or more natural slip).
+        // Only within one layout: RU against UK (компьютер / комп'ютер) is a language
+        // choice, and a capitalized word may be a name (Danek), so those still abstain.
         if let rival = candidates.filter({ $0.text != best.text }).max(by: { $0.weight < $1.weight }) {
             let leader = candidates.filter { $0.text != rival.text }.max(by: { $0.weight < $1.weight }) ?? best
-            guard leader.text == best.text, leader.weight >= Self.ambiguityMargin * rival.weight else { return nil }
+            guard core.first?.isUppercase != true,
+                  candidates.allSatisfy({ $0.target.id == best.target.id }),
+                  leader.text == best.text, leader.weight >= Self.ambiguityMargin * rival.weight else { return nil }
         }
         // A rarer word (приобррел → приобрел) needs the spelling service to agree that it
         // is the only close word. Scenario runs showed that letting the service propose

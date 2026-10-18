@@ -329,7 +329,7 @@ public final class Detector {
         // Unknown compounds are a fallback only: preserve all exact dictionary
         // decisions, recognized source words and RU/UK language disambiguation.
         // Only Cyrillic → Latin qualifies; never invent Cyrillic words by splitting.
-        if candidates.isEmpty, sourceRank == nil,
+        if candidates.isEmpty, sourceRank == nil, !capitals,
            source.languages.contains(where: { $0 == .russian || $0 == .ukrainian }) {
             for target in layouts where target.id != source.id &&
                 !target.languages.contains(where: { $0 == .russian || $0 == .ukrainian }) {

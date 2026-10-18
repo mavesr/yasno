@@ -85,6 +85,9 @@ extension Detector {
             let text: String
             let target: KeyboardLayout
             let rank: Int
+            let typed: String
+            /// Frequency (Zipf: 1/rank) times how likely this slip is on the keyboard.
+            var weight: Double { Detector.slipLikelihood(typed: typed, intended: text, layout: target) / Double(rank) }
         }
         var candidates: [Candidate] = []
         for target in layouts {
@@ -98,7 +101,8 @@ extension Detector {
                   // A valid word in another alphabet is a layout question, not a typo.
                   target.id == source.id || !SystemLexicon.shared.knows(rendered, languages: target.languages) else { continue }
             for (text, frequency) in spellingNeighbors(WordText.canonical(rendered.lowercased()), languages: target.languages) {
-                candidates.append(Candidate(text: text, target: target, rank: frequency))
+                candidates.append(Candidate(text: text, target: target, rank: frequency,
+                                            typed: WordText.canonical(rendered.lowercased())))
             }
         }
         // Merge identical RU/UK output for probability comparison, retaining the chosen
@@ -106,8 +110,12 @@ extension Detector {
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
         guard let best = candidates.first else { return nil }
         // Frequency is not proof of intent: even a rare alternative can be the
-        // intended inflection. Any other dictionary candidate means abstention.
-        guard !candidates.contains(where: { $0.text != best.text }) else { return nil }
+        // intended inflection. Another candidate means abstention unless the best one
+        // is far likelier (much more frequent and an equally or more natural slip).
+        if let rival = candidates.filter({ $0.text != best.text }).max(by: { $0.weight < $1.weight }) {
+            let leader = candidates.filter { $0.text != rival.text }.max(by: { $0.weight < $1.weight }) ?? best
+            guard leader.text == best.text, leader.weight >= Self.ambiguityMargin * rival.weight else { return nil }
+        }
         // A rarer word (приобррел → приобрел) needs the spelling service to agree that it
         // is the only close word. Scenario runs showed that letting the service propose
         // words itself, or veto on its rare suggestions, costs more than it gains.
@@ -129,6 +137,40 @@ extension Detector {
         guard !ignored.contains(output.lowercased()), !ignored.contains(WordText.canonical(output.lowercased())) else { return nil }
         return Suggestion(original: word, replacement: output + suffix, target: chosen.target,
                           score: log10(50_001 / Double(chosen.rank)))
+    }
+
+    /// How much likelier the best of several close words must be. Chosen on the
+    /// scenario suite: lower values fix more slips but start changing intended words.
+    static let ambiguityMargin = 30.0
+
+    /// Relative likelihood that `typed` came from `intended` by one slip, on this layout.
+    /// Neighbouring keys, doubled and dropped double letters and swaps are common;
+    /// a substitution or insertion far across the keyboard is not.
+    static func slipLikelihood(typed: String, intended: String, layout: KeyboardLayout) -> Double {
+        let t = Array(typed), w = Array(intended)
+        func near(_ a: Character, _ b: Character) -> Bool {
+            guard let x = layout.key(for: a), let y = layout.key(for: b) else { return false }
+            return KeyboardGeometry.areNeighbours(x, y)
+        }
+        if t.count == w.count {
+            let diff = t.indices.filter { t[$0] != w[$0] }
+            if diff.count == 1 { return near(t[diff[0]], w[diff[0]]) ? 1 : 0.05 }
+            return 0.7 // a swap of neighbouring letters
+        }
+        if t.count == w.count + 1 {
+            var i = 0
+            while i < w.count, t[i] == w[i] { i += 1 }
+            let extra = t[i]
+            let before = i > 0 ? t[i - 1] : nil, after = i + 1 < t.count ? t[i + 1] : nil
+            if extra == before || extra == after { return 0.7 }
+            if before.map({ near(extra, $0) }) == true || after.map({ near(extra, $0) }) == true { return 0.5 }
+            return 0.05
+        }
+        var i = 0
+        while i < t.count, t[i] == w[i] { i += 1 }
+        let missing = w[i]
+        if (i > 0 && w[i - 1] == missing) || (i + 1 < w.count && w[i + 1] == missing) { return 0.8 }
+        return 0.4
     }
 
     private static let commonMisspellings = [

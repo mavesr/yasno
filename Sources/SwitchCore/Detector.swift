@@ -304,7 +304,7 @@ public final class Detector {
                 ?? (typedSymbols && !convertedCore.isEmpty ? rank(convertedCore, languages: target.languages) : nil)
             let candidateRank: Int
             if let dictionaryRank { candidateRank = dictionaryRank }
-            else if sourceRank == nil, convertedCore.count >= 5,
+            else if sourceRank == nil, convertedSuffix.isEmpty || typedSymbols, convertedCore.count >= 5,
                     convertedCore.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(convertedCore)),
                     SystemLexicon.shared.knows(convertedCore, languages: target.languages) {
                 // A valid form outside the frequency list (медучреждениях): weak evidence,

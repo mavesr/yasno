@@ -13,3 +13,9 @@ permissions
 programmable
 internationalization
 github
+ios 3000
+app 3000
+api 3500
+usb 3500
+macos
+chatgpt

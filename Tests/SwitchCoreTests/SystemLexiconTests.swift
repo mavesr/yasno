@@ -53,5 +53,16 @@ final class SystemLexiconTests: XCTestCase {
         let abc = try layout("ABC"), ru = try layout("Russian")
         XCTAssertNil(detector.suggest("D", source: abc, layouts: [abc, ru], context: "The report was written by "))
         XCTAssertEqual(detector.suggest("d", source: abc, layouts: [abc, ru], preferredTargetID: ru.id)?.replacement, "в")
+        // Lowercase letters are not initials: a Latin word earlier in the sentence does not keep them.
+        for (typed, expected) in [("b", "и"), ("z", "я"), ("f", "а")] {
+            XCTAssertEqual(detector.suggest(typed, source: abc, layouts: [abc, ru], preferredTargetID: ru.id,
+                                            context: "Открой app ")?.replacement, expected, typed)
+        }
+    }
+
+    func testShortTechWordsConvertFromThreeKeys() throws {
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        XCTAssertEqual(detector.suggest("шщы", source: ru, layouts: [abc, ru, uk])?.replacement, "ios")
+        XCTAssertEqual(detector.suggest("фзз", source: ru, layouts: [abc, ru, uk])?.replacement, "app")
     }
 }

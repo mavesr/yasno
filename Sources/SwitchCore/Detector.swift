@@ -304,11 +304,13 @@ public final class Detector {
                 ?? (typedSymbols && !convertedCore.isEmpty ? rank(convertedCore, languages: target.languages) : nil)
             let candidateRank: Int
             if let dictionaryRank { candidateRank = dictionaryRank }
-            else if sourceRank == nil, convertedSuffix.isEmpty || typedSymbols, convertedCore.count >= 5,
+            else if !live, sourceRank == nil, convertedSuffix.isEmpty || typedSymbols, convertedCore.count >= 5,
+                    Self.isCyrillic(source) != Self.isCyrillic(target),
                     convertedCore.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(convertedCore)),
                     SystemLexicon.shared.knows(convertedCore, languages: target.languages) {
                 // A valid form outside the frequency list (медучреждениях): weak evidence,
                 // below any dictionary word, so every ambiguity rule below still applies.
+                // Never for an unfinished word (Павлови → Павловы) or between RU and UK.
                 candidateRank = 30_000
             } else { continue }
             if !manual {
@@ -337,6 +339,13 @@ public final class Detector {
                 candidates.append(Suggestion(original: word, replacement: converted, target: target,
                                              score: log10(50_001.0 / 40_000.0)))
             }
+        }
+        // Between RU and UK the same keys spell both languages: a name or form missing
+        // from the list (Анатолій) stays when the sentence so far is in the source language.
+        if !manual, sourceRank == nil, Self.isCyrillic(source),
+           candidates.contains(where: { Self.isCyrillic($0.target) }),
+           contextPreference(context, targets: [source] + candidates.map(\.target)) == source.id {
+            candidates.removeAll { Self.isCyrillic($0.target) }
         }
         candidates.sort { $0.score > $1.score }
         guard let best = candidates.first else {
@@ -383,6 +392,10 @@ public final class Detector {
             $0.replacement == best.replacement && $0.target.languages != best.target.languages
         }) { return nil }
         return best
+    }
+
+    static func isCyrillic(_ layout: KeyboardLayout) -> Bool {
+        layout.languages.contains { $0 == .russian || $0 == .ukrainian }
     }
 
     /// A Cyrillic word whose ю key happens to spell a domain (действующее → ltqcnde.ott,

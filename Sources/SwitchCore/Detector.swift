@@ -305,12 +305,11 @@ public final class Detector {
             let candidateRank: Int
             if let dictionaryRank { candidateRank = dictionaryRank }
             else if !live, sourceRank == nil, convertedSuffix.isEmpty || typedSymbols, convertedCore.count >= 5,
-                    Self.isCyrillic(source) != Self.isCyrillic(target),
                     convertedCore.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(convertedCore)),
                     SystemLexicon.shared.knows(convertedCore, languages: target.languages) {
                 // A valid form outside the frequency list (медучреждениях): weak evidence,
                 // below any dictionary word, so every ambiguity rule below still applies.
-                // Never for an unfinished word (Павлови → Павловы) or between RU and UK.
+                // Never for an unfinished word: Павлови is the start of Павловичу, not Павловы.
                 candidateRank = 30_000
             } else { continue }
             if !manual {

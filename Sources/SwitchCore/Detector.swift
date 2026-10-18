@@ -252,8 +252,16 @@ public final class Detector {
     public func suggest(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],
                         ignored: Set<String> = [], manual: Bool = false,
                         preferredTargetID: String? = nil, context: String = "") -> Suggestion? {
+        suggest(word, source: source, layouts: layouts, ignored: ignored, manual: manual,
+                preferredTargetID: preferredTargetID, context: context, live: false)
+    }
+
+    /// `live` marks an unfinished word: punctuation at its end may still become a letter.
+    func suggest(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],
+                 ignored: Set<String> = [], manual: Bool = false,
+                 preferredTargetID: String? = nil, context: String = "", live: Bool) -> Suggestion? {
         guard !ignored.contains(word.lowercased()) else { return nil }
-        if rank(word, languages: source.languages) == nil,
+        if rank(word, languages: source.languages) == nil, manual || !isValidNativeText(word, source: source),
            let address = suggestAddress(word, source: source, layouts: layouts) { return address }
         guard (manual ? 1...128 : 1...64).contains(word.count),
               !word.contains(where: { $0.isNumber }),
@@ -273,6 +281,9 @@ public final class Detector {
         // A recognized full word is evidence of deliberate native input, even when
         // rare (e.g. English herb). Frequency may resolve only short abbreviations.
         if !manual, let sourceRank, sourceRank <= 5_000 || baseWord.count >= 4 { return nil }
+        // The spelling service knows inflections the frequency list lacks (песках, aufgetretene).
+        if !manual, sourceRank == nil, baseWord.count >= 4,
+           SystemLexicon.shared.knows(baseWord, languages: validLanguages) { return nil }
         // Avoid touching code identifiers and acronyms. Title case remains supported.
         if !manual {
             if letters.count > 1 && letters == letters.uppercased() { return nil }
@@ -281,8 +292,21 @@ public final class Detector {
 
         var candidates: [Suggestion] = []
         for target in layouts where target.id != source.id {
-            guard let converted = source.convert(word, to: target), converted != word,
-                  let candidateRank = rank(converted, languages: target.languages) else { continue }
+            guard let converted = source.convert(word, to: target), converted != word else { continue }
+            // Judge the word without punctuation the target layout puts at its end: the Mac
+            // Russian layout types , and . with Shift-6/7, which ABC renders as ^ and &.
+            let (convertedCore, convertedSuffix) = WordText.coreAndSuffix(converted)
+            let dictionaryRank = rank(converted, languages: target.languages)
+                ?? (convertedSuffix.isEmpty || convertedCore.isEmpty ? nil : rank(convertedCore, languages: target.languages))
+            let candidateRank: Int
+            if let dictionaryRank { candidateRank = dictionaryRank }
+            else if sourceRank == nil, convertedCore.count >= 5,
+                    convertedCore.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(convertedCore)),
+                    SystemLexicon.shared.knows(convertedCore, languages: target.languages) {
+                // A valid form outside the frequency list (медучреждениях): weak evidence,
+                // below any dictionary word, so every ambiguity rule below still applies.
+                candidateRank = 30_000
+            } else { continue }
             if !manual {
                 let outputLetters = converted.filter(\.isLetter)
                 if outputLetters.count > 1 && outputLetters == outputLetters.uppercased() { continue }
@@ -316,8 +340,9 @@ public final class Detector {
             // Try the complete key sequence first; only then treat punctuation as a suffix.
             // Peel one suffix character at a time. In lzre.! the period belongs
             // to the physical Ukrainian word (ю), whereas ! is punctuation.
+            // While typing, the punctuation may still be a letter key (Nfr; → Такж…).
             let core = word.last.map { ".,!?;:…\"'’)]}".contains($0) } == true ? String(word.dropLast()) : word
-            if !core.isEmpty, core != word,
+            if !live, !core.isEmpty, core != word,
                let inner = suggest(core, source: source, layouts: layouts, ignored: ignored, manual: manual,
                                    preferredTargetID: preferredTargetID, context: context) {
                 return Suggestion(original: word, replacement: inner.replacement + word.dropFirst(core.count),
@@ -354,6 +379,22 @@ public final class Detector {
             $0.replacement == best.replacement && $0.target.languages != best.target.languages
         }) { return nil }
         return best
+    }
+
+    /// A Cyrillic word whose ю key happens to spell a domain (действующее → ltqcnde.ott,
+    /// звертаюсь → pdthnf.cm) is text, not an address.
+    private func isValidNativeText(_ word: String, source: KeyboardLayout) -> Bool {
+        guard source.languages.contains(where: { $0 == .russian || $0 == .ukrainian }) else { return false }
+        let core = WordText.coreAndSuffix(word).core
+        guard core.count >= 2, core.allSatisfy(\.isLetter) else { return false }
+        return rank(core, languages: source.languages) != nil || SystemLexicon.shared.knows(core, languages: source.languages)
+    }
+
+    /// While a word is still being typed only an unmistakable address converts;
+    /// a bare host may be the prefix of a word (зароютс → pfhj.nc) and waits for Space.
+    private static func isExplicitAddress(_ output: String) -> Bool {
+        let lower = output.lowercased()
+        return lower.contains("://") || lower.hasPrefix("www.") || lower.contains("/")
     }
 
     private func suggestAddress(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout]) -> Suggestion? {
@@ -428,9 +469,11 @@ public final class Detector {
                                    context: String = "", spellingAware: Bool = false) -> Suggestion? {
         guard word.count >= 4, !ignored.contains(word.lowercased()) else { return nil }
         guard !isNativePrefix(word, languages: source.languages) else { return nil }
-        if let address = suggestAddress(word, source: source, layouts: layouts) { return address }
+        if let address = suggestAddress(word, source: source, layouts: layouts) {
+            return Self.isExplicitAddress(address.replacement) ? address : nil
+        }
         let exact = suggest(word, source: source, layouts: layouts, ignored: ignored,
-                            preferredTargetID: preferredTargetID, context: context)
+                            preferredTargetID: preferredTargetID, context: context, live: true)
         guard let result = exact
             ?? suggestPrefixWhileTyping(word, source: source, layouts: layouts, ignored: ignored,
                                         preferredTargetID: preferredTargetID, context: context) else { return nil }
@@ -452,14 +495,16 @@ public final class Detector {
                                       ignored: Set<String> = [], spellingAware: Bool = false) -> Bool {
         guard word.count >= 4, !ignored.contains(word.lowercased()),
               !isNativePrefix(word, languages: source.languages) else { return false }
-        if suggestAddress(word, source: source, layouts: layouts) != nil { return true }
+        if let address = suggestAddress(word, source: source, layouts: layouts) {
+            return Self.isExplicitAddress(address.replacement)
+        }
         var nativeAlternative: Bool?
         var prefixNativeAlternative: Bool?
         let suffix = WordText.coreAndSuffix(word).suffix
         return layouts.contains { target in
             guard target.id != source.id else { return false }
             let exact = suggest(word, source: source, layouts: layouts, ignored: ignored,
-                                preferredTargetID: target.id)
+                                preferredTargetID: target.id, live: true)
             guard let result = exact
                     ?? suggestPrefixWhileTyping(word, source: source, layouts: layouts, ignored: ignored,
                                                 preferredTargetID: target.id) else { return false }
@@ -507,6 +552,8 @@ public final class Detector {
                   output != word, isWord(output, in: target.languages) else { return nil }
             return Suggestion(original: word, replacement: output, target: target, score: 1)
         }
+        // An initial inside English text (D, P) stays when the context is the source language.
+        if !candidates.isEmpty, contextPreference(context, targets: [source] + candidates.map(\.target)) == source.id { return nil }
         let preference = contextualPreference(context, candidates: candidates) ?? preferredTargetID
         if let preferred = candidates.first(where: { $0.target.id == preference }) { return preferred }
         return candidates.count == 1 ? candidates.first : nil

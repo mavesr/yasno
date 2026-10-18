@@ -72,6 +72,15 @@ extension Detector {
             return Suggestion(original: word, replacement: text + suffix, target: source, score: 1)
         }
         guard rank(core, languages: source.languages) == nil else { return nil }
+        // Valid text is never respelled: a form the frequency list lacks (песках, українці)
+        // or a word of another language typed with this alphabet (должна, будешь on the
+        // Ukrainian layout).
+        let sourceCyrillic = source.languages.contains { $0 == .russian || $0 == .ukrainian }
+        let sameAlphabet = layouts.filter {
+            $0.languages.contains { $0 == .russian || $0 == .ukrainian } == sourceCyrillic
+        }.flatMap(\.languages) + source.languages
+        guard rank(core, languages: sameAlphabet) == nil,
+              !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) else { return nil }
         struct Candidate {
             let text: String
             let target: KeyboardLayout
@@ -81,12 +90,13 @@ extension Detector {
         for target in layouts {
             // Preserve the source alphabet first. Do not reinterpret ordinary Cyrillic
             // spelling mistakes as the other Cyrillic language without direct evidence.
-            let sourceCyrillic = source.languages.contains { $0 == .russian || $0 == .ukrainian }
             let targetCyrillic = target.languages.contains { $0 == .russian || $0 == .ukrainian }
             if target.id != source.id && sourceCyrillic == targetCyrillic { continue }
             guard let rendered = target.id == source.id ? core : source.convert(core, to: target),
                   (rendered.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(rendered))),
-                  rank(rendered, languages: target.languages) == nil else { continue }
+                  rank(rendered, languages: target.languages) == nil,
+                  // A valid word in another alphabet is a layout question, not a typo.
+                  target.id == source.id || !SystemLexicon.shared.knows(rendered, languages: target.languages) else { continue }
             for (text, frequency) in spellingNeighbors(WordText.canonical(rendered.lowercased()), languages: target.languages) {
                 candidates.append(Candidate(text: text, target: target, rank: frequency))
             }

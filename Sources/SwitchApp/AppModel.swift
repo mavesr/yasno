@@ -350,21 +350,25 @@ final class AppModel: ObservableObject {
         // Typing pauses are frequent and almost always negative, so check before
         // gating: a negative result never holds input. A key typed meanwhile changes
         // the revision, beginGate refuses, and the next pause retries.
-        let layouts = self.layouts, ignored = self.ignored, correctSpelling = self.correctSpelling
+        let request = self.request(for: token, source: source, whileTyping: true)
         worker.async { [self] in
-            guard monitor.revision == token.revision,
-                  detector.maySuggestWhileTyping(token.text, source: source, layouts: layouts,
-                                                 ignored: ignored, spellingAware: correctSpelling) else { return }
+            guard monitor.revision == token.revision, detector.mayCorrect(request) else { return }
             DispatchQueue.main.async { self.correct(token, whileTyping: true) }
         }
+    }
+
+    private func request(for token: KeyboardMonitor.Token, source: KeyboardLayout, whileTyping: Bool) -> CorrectionRequest {
+        let bundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        return CorrectionRequest(text: token.text, source: source, layouts: layouts, ignored: ignored,
+                                 preferredTargetID: preferred[bundle] ?? globalPreferred,
+                                 correctSpelling: correctSpelling, whileTyping: whileTyping,
+                                 liveConverted: token.liveConverted)
     }
 
     private func correct(_ token: KeyboardMonitor.Token, whileTyping: Bool) {
         guard monitor.enabled, monitor.revision == token.revision,
               let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
-        let layouts = self.layouts, ignored = self.ignored, correctSpelling = self.correctSpelling
-        let bundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-        let preferredID = preferred[bundle] ?? globalPreferred
+        let request = self.request(for: token, source: source, whileTyping: whileTyping)
         // Reserve before returning to the event stream, including replayed Space.
         // All dictionary/spelling work runs on the worker; negative results release
         // the gate without touching AX or doing browser IPC.
@@ -372,11 +376,8 @@ final class AppModel: ObservableObject {
         worker.async { [self] in
             defer { DispatchQueue.main.async { self.monitor.endGate(revision: token.revision) } }
             guard self.monitor.revision == token.revision else { return }
-            // Live ticks were checked with maySuggestWhileTyping before the gate.
-            let possible = whileTyping || (token.liveConverted
-                ? self.detector.suggestSpelling(token.text, source: source, layouts: layouts, ignored: ignored, preferredTargetID: preferredID) != nil
-                : self.detector.maySuggestCompleted(token.text, source: source, layouts: layouts, ignored: ignored, correctSpelling: correctSpelling))
-            guard possible else { return }
+            // Live ticks were checked with mayCorrect before the gate.
+            guard whileTyping || self.detector.mayCorrect(request) else { return }
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else { return }
@@ -403,15 +404,7 @@ final class AppModel: ObservableObject {
                 guard let left = editor.text(in: CFRange(location: suffixRange.location - 1, length: 1)),
                       TextSafety.hasLeftBoundary(left) else { return }
             }
-            let candidate = token.liveConverted
-                ? self.detector.suggestSpelling(token.text, source: source, layouts: layouts,
-                    ignored: ignored, preferredTargetID: preferredID, context: context)
-                : whileTyping
-                ? self.detector.suggestWhileTyping(token.text, source: source, layouts: layouts,
-                    ignored: ignored, preferredTargetID: preferredID, context: context, spellingAware: correctSpelling)
-                : self.detector.suggestCompleted(token.text, source: source, layouts: layouts,
-                    ignored: ignored, preferredTargetID: preferredID, context: context, correctSpelling: correctSpelling)
-            guard let suggestion = candidate else { return }
+            guard let suggestion = self.detector.correction(request, context: context) else { return }
             let range = CFRange(location: suffixRange.location, length: token.text.utf16.count)
             let result = editor.replace(range: range, expected: token.text, replacement: suggestion.replacement,
                                         caret: caret, stillValid: { self.monitor.revision == token.revision && !IsSecureEventInputEnabled() },

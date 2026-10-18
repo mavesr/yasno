@@ -42,10 +42,21 @@ regressions = [row for key, row in after.items() if key not in before]
 changed = [row for key, row in after.items() if key in before and
            (row['actual'], row.get('target')) != (before[key]['actual'], before[key].get('target'))]
 improvements = [key for key in before if key not in after]
+# Scenario word-level misses are counted, not listed, so also compare category counts.
+old_categories, new_categories = old.get('categories', {}), new.get('categories', {})
+if set(old_categories) != set(new_categories):
+    sys.exit('Not comparable: categories changed; review a new baseline explicitly')
+worse = [key for key, stats in sorted(new_categories.items())
+         if stats.get('passed', 0) < old_categories[key].get('passed', 0)
+         or stats.get('different', 0) > old_categories[key].get('different', 0)]
 print('New failing / non-matching cases:', len(regressions))
 print('Changed non-matching suggestions:', len(changed))
 print('Now matching:', len(improvements))
+print('Categories with fewer passes or more wrong changes:', len(worse))
 print('Required failures:', new['total']['requiredFailures'])
+for key in worse[:30]:
+    print(' ', key, 'passed', old_categories[key].get('passed', 0), '->', new_categories[key].get('passed', 0),
+          'different', old_categories[key].get('different', 0), '->', new_categories[key].get('different', 0))
 for row in (regressions + changed)[:30]:
     print(row['id'], repr(row['input']), '->', repr(row['actual']), 'expected', repr(row['expected']))
-sys.exit(1 if regressions or changed or new['total']['requiredFailures'] else 0)
+sys.exit(1 if regressions or changed or worse or new['total']['requiredFailures'] else 0)

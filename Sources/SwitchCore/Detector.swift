@@ -61,6 +61,10 @@ public final class Detector {
         return Storage(ranks: ranks, sortedWords: sortedWords, counts: counts)
     }
 
+    /// Read-only word → frequency rank table, for validation tools that need to
+    /// reason about the same vocabulary independently of the lookup code.
+    public func vocabulary(_ language: Language) -> [String: Int] { storage.ranks[language] ?? [:] }
+
     public func rank(_ word: String, languages: [Language]) -> Int? {
         let lower = WordText.canonical(word.lowercased())
         return rankLowercased(lower, languages: languages)

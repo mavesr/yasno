@@ -72,32 +72,74 @@ extension Detector {
             return Suggestion(original: word, replacement: text + suffix, target: source, score: 1)
         }
         guard rank(core, languages: source.languages) == nil else { return nil }
+        // Valid text is never respelled: a form the frequency list lacks (песках, українці)
+        // or a word of another language typed with this alphabet (должна, будешь on the
+        // Ukrainian layout).
+        let sourceCyrillic = source.languages.contains { $0 == .russian || $0 == .ukrainian }
+        let sameAlphabet = layouts.filter {
+            $0.languages.contains { $0 == .russian || $0 == .ukrainian } == sourceCyrillic
+        }.flatMap(\.languages) + source.languages
+        guard rank(core, languages: sameAlphabet) == nil else { return nil }
         struct Candidate {
             let text: String
             let target: KeyboardLayout
             let rank: Int
+            let typed: String
+            /// Frequency (Zipf: 1/rank) times how likely this slip is on the keyboard.
+            var weight: Double { Detector.slipLikelihood(typed: typed, intended: text, layout: target) / Double(rank) }
         }
         var candidates: [Candidate] = []
         for target in layouts {
             // Preserve the source alphabet first. Do not reinterpret ordinary Cyrillic
             // spelling mistakes as the other Cyrillic language without direct evidence.
-            let sourceCyrillic = source.languages.contains { $0 == .russian || $0 == .ukrainian }
             let targetCyrillic = target.languages.contains { $0 == .russian || $0 == .ukrainian }
             if target.id != source.id && sourceCyrillic == targetCyrillic { continue }
             guard let rendered = target.id == source.id ? core : source.convert(core, to: target),
                   (rendered.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(rendered))),
                   rank(rendered, languages: target.languages) == nil else { continue }
-            for (text, frequency) in spellingNeighbors(WordText.canonical(rendered.lowercased()), languages: target.languages) {
-                candidates.append(Candidate(text: text, target: target, rank: frequency))
+            let neighbors = spellingNeighbors(WordText.canonical(rendered.lowercased()), languages: target.languages)
+            // A valid word in another alphabet is a layout question, not a typo.
+            if neighbors.isEmpty || (target.id != source.id && SystemLexicon.shared.knows(rendered, languages: target.languages)) { continue }
+            for (text, frequency) in neighbors {
+                candidates.append(Candidate(text: text, target: target, rank: frequency,
+                                            typed: WordText.canonical(rendered.lowercased())))
             }
         }
         // Merge identical RU/UK output for probability comparison, retaining the chosen
         // layout only when context / explicit preference can resolve that ambiguity.
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
-        guard let best = candidates.first, best.rank <= 20_000 else { return nil }
+        guard let best = candidates.first,
+              !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) else { return nil }
         // Frequency is not proof of intent: even a rare alternative can be the
-        // intended inflection. Any other dictionary candidate means abstention.
-        guard !candidates.contains(where: { $0.text != best.text }) else { return nil }
+        // intended inflection. Another candidate means abstention unless the best one
+        // is far likelier (much more frequent and an equally or more natural slip).
+        // The same word spelled the RU and the UK way (компьютер / комп'ютер) is a
+        // language choice: it needs the sentence so far to be in the winner's language.
+        // A capitalized word may be a name (Danek), so it needs a wider margin.
+        if let rival = candidates.filter({ $0.text != best.text }).max(by: { $0.weight < $1.weight }) {
+            let leader = candidates.filter { $0.text != rival.text }.max(by: { $0.weight < $1.weight }) ?? best
+            let margin = Self.ambiguityMargin * (core.first?.isUppercase == true ? 3 : 1)
+            guard leader.text == best.text, leader.weight >= margin * rival.weight else { return nil }
+            let counterparts = candidates.filter {
+                $0.target.id != best.target.id && Self.areCognates($0.text, best.text)
+            }
+            if !counterparts.isEmpty {
+                guard contextPreference(context, targets: [best.target] + counterparts.map(\.target)) == best.target.id else { return nil }
+            }
+        }
+        // A rarer word (приобррел → приобрел) needs the spelling service to agree that it
+        // is the only close word. Scenario runs showed that letting the service propose
+        // words itself, or veto on its rare suggestions, costs more than it gains.
+        if best.rank > 20_000 {
+            guard best.rank <= 50_000, core.count >= 6, best.target.id == source.id,
+                  source.languages.contains(where: {
+                      SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) == [best.text]
+                  }) else { return nil }
+        }
+        // A capital inside a sentence marks a name (Shaikh, Балеевой), except for German
+        // nouns, which are capitalized everywhere.
+        if core.first?.isUppercase == true, Self.isInsideSentence(context),
+           !(best.target.languages.contains(.german) && rank(best.text, languages: [.german]) != nil) { return nil }
         let identical = candidates.filter { $0.text == best.text }
         let contextual = spellingContextPreference(context, candidates: identical.map(\.target)) ?? preferredTargetID
         let chosen: Candidate
@@ -110,6 +152,57 @@ extension Detector {
         guard !ignored.contains(output.lowercased()), !ignored.contains(WordText.canonical(output.lowercased())) else { return nil }
         return Suggestion(original: word, replacement: output + suffix, target: chosen.target,
                           score: log10(50_001 / Double(chosen.rank)))
+    }
+
+    /// How much likelier the best of several close words must be. Chosen on the
+    /// scenario suite: lower values fix more slips but start changing intended words.
+    static let ambiguityMargin = 30.0
+
+    static func isInsideSentence(_ context: String) -> Bool {
+        guard let last = context.last(where: { !$0.isWhitespace }) else { return false }
+        return !".!?…\n".contains(last) && !"\"«“„(".contains(last)
+    }
+
+    private static let cognateLetters: Set<Set<Character>> = [
+        ["ь", "'"], ["ъ", "'"], ["ы", "и"], ["и", "і"], ["э", "е"], ["е", "є"], ["ё", "е"], ["г", "ґ"], ["ї", "і"]
+    ]
+
+    /// One word in its Russian and Ukrainian spelling: same length, differing only in
+    /// letters the two orthographies swap.
+    static func areCognates(_ a: String, _ b: String) -> Bool {
+        let x = Array(a), y = Array(b)
+        guard x.count == y.count, x != y else { return false }
+        return x.indices.allSatisfy { x[$0] == y[$0] || cognateLetters.contains([x[$0], y[$0]]) }
+    }
+
+    /// Relative likelihood that `typed` came from `intended` by one slip, on this layout.
+    /// Neighbouring keys, doubled and dropped double letters and swaps are common;
+    /// a substitution or insertion far across the keyboard is not.
+    static func slipLikelihood(typed: String, intended: String, layout: KeyboardLayout) -> Double {
+        let t = Array(typed), w = Array(intended)
+        func near(_ a: Character, _ b: Character) -> Bool {
+            guard let x = layout.key(for: a), let y = layout.key(for: b) else { return false }
+            return KeyboardGeometry.areNeighbours(x, y)
+        }
+        if t.count == w.count {
+            let diff = t.indices.filter { t[$0] != w[$0] }
+            if diff.count == 1 { return near(t[diff[0]], w[diff[0]]) ? 1 : 0.05 }
+            return 0.7 // a swap of neighbouring letters
+        }
+        if t.count == w.count + 1 {
+            var i = 0
+            while i < w.count, t[i] == w[i] { i += 1 }
+            let extra = t[i]
+            let before = i > 0 ? t[i - 1] : nil, after = i + 1 < t.count ? t[i + 1] : nil
+            if extra == before || extra == after { return 0.7 }
+            if before.map({ near(extra, $0) }) == true || after.map({ near(extra, $0) }) == true { return 0.5 }
+            return 0.05
+        }
+        var i = 0
+        while i < t.count, t[i] == w[i] { i += 1 }
+        let missing = w[i]
+        if (i > 0 && w[i - 1] == missing) || (i + 1 < w.count && w[i + 1] == missing) { return 0.8 }
+        return 0.4
     }
 
     private static let commonMisspellings = [

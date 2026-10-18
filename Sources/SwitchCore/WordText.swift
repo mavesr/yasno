@@ -30,4 +30,20 @@ enum WordText {
         }
         return true
     }
+
+    /// One insertion, deletion, substitution or swap of neighbouring letters.
+    static func isOneEdit(_ a: String, _ b: String) -> Bool {
+        let x = Array(a), y = Array(b)
+        if x == y { return false }
+        if x.count == y.count {
+            let diff = x.indices.filter { x[$0] != y[$0] }
+            if diff.count == 1 { return true }
+            return diff.count == 2 && diff[1] == diff[0] + 1 && x[diff[0]] == y[diff[1]] && x[diff[1]] == y[diff[0]]
+        }
+        let (long, short) = x.count > y.count ? (x, y) : (y, x)
+        guard long.count == short.count + 1 else { return false }
+        var i = 0
+        while i < short.count, long[i] == short[i] { i += 1 }
+        return Array(long[(i + 1)...]) == Array(short[i...])
+    }
 }

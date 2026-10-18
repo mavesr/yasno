@@ -72,6 +72,11 @@ public final class KeyboardLayout {
         return String(utf16CodeUnits: buffer, count: length)
     }
 
+    /// The physical key that types this character, ignoring Shift.
+    public func key(for character: Character) -> UInt16? {
+        reverse[String(character)].map { $0 & 0xff }
+    }
+
     public func character(key: UInt16, shift: Bool) -> String? {
         forward[key | (shift ? 0x100 : 0)]
     }

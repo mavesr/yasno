@@ -9,6 +9,25 @@ final class ReportedWordTests: XCTestCase {
         try XCTUnwrap(layouts.first { $0.id == "com.apple.keylayout." + suffix })
     }
 
+    func testSymbolBeforeWordStaysAndWordConverts() throws {
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let active = [abc, ru, uk]
+        for (input, expected, source, target) in [("/вумудщзук", "/developer", ru, abc),
+                                                 ("«руддщ", "«hello", ru, abc),
+                                                 ("(ghbdtn", "(привет", abc, ru),
+                                                 ("#ghbdtn", "#привет", abc, ru)] {
+            XCTAssertTrue(detector.maySuggest(input, source: source, layouts: active), input)
+            XCTAssertEqual(detector.suggest(input, source: source, layouts: active,
+                preferredTargetID: target.id)?.replacement, expected)
+        }
+        // A key that is a letter in another layout belongs to the word: [jxe → хочу.
+        XCTAssertEqual(detector.suggest("[jxe", source: abc, layouts: active, preferredTargetID: ru.id)?.replacement, "хочу")
+        for valid in ["/developer", "(привет", "«hello"] {
+            let source = valid.contains(where: { ("а"..."я").contains(String($0)) }) ? ru : abc
+            XCTAssertNil(detector.suggest(valid, source: source, layouts: active), valid)
+        }
+    }
+
     func testBrowserAndAppconnectAutomaticAndManual() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
         let active = [abc, ru, uk]

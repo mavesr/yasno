@@ -3,6 +3,8 @@ import Foundation
 /// Orthographic apostrophes are part of words, rather than sentence delimiters.
 enum WordText {
     static let suffixPunctuation = Set(".,!?;:…\"'’)]}")
+    /// Symbols that open a word (/команда, «цитата, #тег) without being part of it.
+    static let prefixPunctuation = Set("/\\([{«\"„“‘'*#-")
     static let apostrophes = Set("'’ʼ‘")
 
     static func canonical(_ text: String) -> String {

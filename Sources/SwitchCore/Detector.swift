@@ -261,8 +261,9 @@ public final class Detector {
                  ignored: Set<String> = [], manual: Bool = false,
                  preferredTargetID: String? = nil, context: String = "", live: Bool) -> Suggestion? {
         guard !ignored.contains(word.lowercased()) else { return nil }
-        if rank(word, languages: source.languages) == nil, manual || !isValidNativeText(word, source: source),
-           let address = suggestAddress(word, source: source, layouts: layouts) { return address }
+        if rank(word, languages: source.languages) == nil,
+           let address = suggestAddress(word, source: source, layouts: layouts),
+           manual || !isValidNativeText(word, source: source) { return address }
         guard (manual ? 1...128 : 1...64).contains(word.count),
               !word.contains(where: { $0.isNumber }),
               !word.contains(where: { "@/_=".contains($0) }) else { return nil }
@@ -281,9 +282,6 @@ public final class Detector {
         // A recognized full word is evidence of deliberate native input, even when
         // rare (e.g. English herb). Frequency may resolve only short abbreviations.
         if !manual, let sourceRank, sourceRank <= 5_000 || baseWord.count >= 4 { return nil }
-        // The spelling service knows inflections the frequency list lacks (песках, aufgetretene).
-        if !manual, sourceRank == nil, baseWord.count >= 4,
-           SystemLexicon.shared.knows(baseWord, languages: validLanguages) { return nil }
         // Avoid touching code identifiers and acronyms. Title case remains supported.
         // A finished word in capitals (HFCNDJHS → РАСТВОРЫ) may convert when it spells a
         // dictionary word; shorter capitals are usually acronyms.
@@ -344,6 +342,10 @@ public final class Detector {
                                              score: log10(50_001.0 / 40_000.0)))
             }
         }
+        // The spelling service knows inflections the frequency list lacks (песках,
+        // aufgetretene). Asked only once some conversion is on the table: it is slow.
+        if !manual, !candidates.isEmpty, sourceRank == nil, baseWord.count >= 4,
+           SystemLexicon.shared.knows(baseWord, languages: validLanguages) { return nil }
         // Between RU and UK the same keys spell both languages: a name or form missing
         // from the list (Анатолій) stays when the sentence so far is in the source language.
         if !manual, sourceRank == nil, Self.isCyrillic(source),

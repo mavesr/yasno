@@ -79,8 +79,7 @@ extension Detector {
         let sameAlphabet = layouts.filter {
             $0.languages.contains { $0 == .russian || $0 == .ukrainian } == sourceCyrillic
         }.flatMap(\.languages) + source.languages
-        guard rank(core, languages: sameAlphabet) == nil,
-              !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) else { return nil }
+        guard rank(core, languages: sameAlphabet) == nil else { return nil }
         struct Candidate {
             let text: String
             let target: KeyboardLayout
@@ -97,10 +96,11 @@ extension Detector {
             if target.id != source.id && sourceCyrillic == targetCyrillic { continue }
             guard let rendered = target.id == source.id ? core : source.convert(core, to: target),
                   (rendered.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(rendered))),
-                  rank(rendered, languages: target.languages) == nil,
-                  // A valid word in another alphabet is a layout question, not a typo.
-                  target.id == source.id || !SystemLexicon.shared.knows(rendered, languages: target.languages) else { continue }
-            for (text, frequency) in spellingNeighbors(WordText.canonical(rendered.lowercased()), languages: target.languages) {
+                  rank(rendered, languages: target.languages) == nil else { continue }
+            let neighbors = spellingNeighbors(WordText.canonical(rendered.lowercased()), languages: target.languages)
+            // A valid word in another alphabet is a layout question, not a typo.
+            if neighbors.isEmpty || (target.id != source.id && SystemLexicon.shared.knows(rendered, languages: target.languages)) { continue }
+            for (text, frequency) in neighbors {
                 candidates.append(Candidate(text: text, target: target, rank: frequency,
                                             typed: WordText.canonical(rendered.lowercased())))
             }
@@ -108,7 +108,8 @@ extension Detector {
         // Merge identical RU/UK output for probability comparison, retaining the chosen
         // layout only when context / explicit preference can resolve that ambiguity.
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
-        guard let best = candidates.first else { return nil }
+        guard let best = candidates.first,
+              !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) else { return nil }
         // Frequency is not proof of intent: even a rare alternative can be the
         // intended inflection. Another candidate means abstention unless the best one
         // is far likelier (much more frequent and an equally or more natural slip).

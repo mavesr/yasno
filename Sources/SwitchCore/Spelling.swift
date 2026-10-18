@@ -195,8 +195,10 @@ extension Detector {
     /// Relative likelihood that `typed` came from `intended` by one slip, on this layout.
     /// Neighbouring keys, doubled and dropped double letters and swaps are common;
     /// a substitution or insertion far across the keyboard is not.
+    /// Words further apart than one edit (spelling-service guesses can be) are no slip.
     static func slipLikelihood(typed: String, intended: String, layout: KeyboardLayout) -> Double {
         let t = Array(typed), w = Array(intended)
+        guard abs(t.count - w.count) <= 1 else { return 0 }
         func near(_ a: Character, _ b: Character) -> Bool {
             guard let x = layout.key(for: a), let y = layout.key(for: b) else { return false }
             return KeyboardGeometry.areNeighbours(x, y)

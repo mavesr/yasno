@@ -60,6 +60,13 @@ final class SystemLexiconTests: XCTestCase {
         }
     }
 
+    func testSlipLikelihoodToleratesGuessesTwoEditsAway() throws {
+        // Spelling-service guesses can differ by more than one letter; scoring one crashed the full run.
+        let ru = try layout("Russian")
+        XCTAssertEqual(Detector.slipLikelihood(typed: "качгулллся", intended: "качнулся", layout: ru), 0)
+        XCTAssertEqual(Detector.slipLikelihood(typed: "качнулся", intended: "качнуллсяя", layout: ru), 0)
+    }
+
     func testShortAndRareWordsAreRepaired() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
         let layouts = [abc, ru, uk]

@@ -110,11 +110,16 @@ extension Detector {
         // layout only when context / explicit preference can resolve that ambiguity.
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
         let expGuessMin = Int(ProcessInfo.processInfo.environment["YASNO_EXP_GUESS"] ?? "") ?? 0
+        let expSlip = Double(ProcessInfo.processInfo.environment["YASNO_EXP_SLIP"] ?? "") ?? 0
+        let expAll = ProcessInfo.processInfo.environment["YASNO_EXP_ALLLANG"] != nil
+        let expCaps = ProcessInfo.processInfo.environment["YASNO_EXP_CAPS"] != nil
         if candidates.isEmpty, expGuessMin > 0, core.count >= expGuessMin,
+           expAll || sourceCyrillic, expCaps || core.first?.isUppercase != true,
            !(core.first?.isUppercase == true && Self.isInsideSentence(context)),
            !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) {
             let guesses = Set(source.languages.flatMap { SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) })
-            if guesses.count == 1, let guess = guesses.first, !ignored.contains(guess) {
+            if guesses.count == 1, let guess = guesses.first, !ignored.contains(guess),
+               Detector.slipLikelihood(typed: WordText.canonical(rawCore.lowercased()), intended: guess, layout: source) >= expSlip {
                 let output = core.first?.isUppercase == true ? guess.prefix(1).uppercased() + guess.dropFirst() : guess
                 return Suggestion(original: word, replacement: output + suffix, target: source, score: 0.2)
             }

@@ -35,6 +35,30 @@ public final class SystemLexicon {
         return known
     }
 
+    private var guessCache: [String: [String]] = [:]
+
+    /// The service's suggestions one edit away from the word, lowercased. Used to
+    /// abstain when it knows another close word the frequency list lacks.
+    public func oneEditGuesses(_ word: String, language: Language) -> [String] {
+        guard isEnabled, available.contains(language.rawValue), word.count <= 64,
+              WordText.isOrthographicWord(word) else { return [] }
+        let key = language.rawValue + "\u{1}" + word
+        lock.lock()
+        defer { lock.unlock() }
+        if let guesses = guessCache[key] { return guesses }
+        let lower = WordText.canonical(word.lowercased())
+        let raw = NSSpellChecker.shared.guesses(forWordRange: NSRange(location: 0, length: (word as NSString).length), in: word,
+                                                language: language.rawValue, inSpellDocumentWithTag: 0) ?? []
+        var guesses: [String] = []
+        for guess in raw {
+            let candidate = WordText.canonical(guess.lowercased())
+            if WordText.isOneEdit(lower, candidate), !guesses.contains(candidate) { guesses.append(candidate) }
+        }
+        if guessCache.count >= 20_000 { guessCache.removeAll(keepingCapacity: true) }
+        guessCache[key] = guesses
+        return guesses
+    }
+
     public func knows(_ word: String, languages: [Language]) -> Bool {
         languages.contains { knows(word, language: $0) == true }
     }

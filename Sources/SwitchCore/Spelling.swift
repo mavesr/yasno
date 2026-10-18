@@ -113,7 +113,7 @@ extension Detector {
         // Frequency is not proof of intent: even a rare alternative can be the
         // intended inflection. Another candidate means abstention unless the best one
         // is far likelier (much more frequent and an equally or more natural slip).
-        // The same word in RU and UK (компьютер / комп'ютер: one key apart) is a
+        // The same word spelled the RU and the UK way (компьютер / комп'ютер) is a
         // language choice: it needs the sentence so far to be in the winner's language.
         // A capitalized word may be a name (Danek), so it needs a far wider margin.
         if let rival = candidates.filter({ $0.text != best.text }).max(by: { $0.weight < $1.weight }) {
@@ -121,7 +121,7 @@ extension Detector {
             let margin = Self.ambiguityMargin * (core.first?.isUppercase == true ? 10 : 1)
             guard leader.text == best.text, leader.weight >= margin * rival.weight else { return nil }
             let counterparts = candidates.filter {
-                $0.target.id != best.target.id && Self.withinOneKey($0.text, $0.target, best.text, best.target)
+                $0.target.id != best.target.id && Self.areCognates($0.text, best.text)
             }
             if !counterparts.isEmpty {
                 guard contextPreference(context, targets: [best.target] + counterparts.map(\.target)) == best.target.id else { return nil }
@@ -154,19 +154,16 @@ extension Detector {
     /// scenario suite: lower values fix more slips but start changing intended words.
     static let ambiguityMargin = 30.0
 
-    /// Whether two words, each in its own layout, are typed with the same keys but one.
-    static func withinOneKey(_ a: String, _ layoutA: KeyboardLayout, _ b: String, _ layoutB: KeyboardLayout) -> Bool {
-        func keys(_ text: String, _ layout: KeyboardLayout) -> String? {
-            var scalars = String.UnicodeScalarView()
-            for character in text {
-                guard let key = layout.key(for: character) ?? layout.key(for: Character(character.uppercased())),
-                      let scalar = UnicodeScalar(0xE000 + UInt32(key)) else { return nil }
-                scalars.append(scalar)
-            }
-            return String(scalars)
-        }
-        guard let x = keys(a, layoutA), let y = keys(b, layoutB) else { return true }
-        return x == y || WordText.isOneEdit(x, y)
+    private static let cognateLetters: Set<Set<Character>> = [
+        ["ь", "'"], ["ъ", "'"], ["ы", "и"], ["и", "і"], ["э", "е"], ["е", "є"], ["ё", "е"], ["г", "ґ"], ["ї", "і"]
+    ]
+
+    /// One word in its Russian and Ukrainian spelling: same length, differing only in
+    /// letters the two orthographies swap.
+    static func areCognates(_ a: String, _ b: String) -> Bool {
+        let x = Array(a), y = Array(b)
+        guard x.count == y.count, x != y else { return false }
+        return x.indices.allSatisfy { x[$0] == y[$0] || cognateLetters.contains([x[$0], y[$0]]) }
     }
 
     /// Relative likelihood that `typed` came from `intended` by one slip, on this layout.

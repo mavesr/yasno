@@ -1,6 +1,14 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h:h}"
+if [[ -z "${YASNO_SIGNING_IDENTITY:-}" ]]; then
+    YASNO_IDENTITIES=("${(@f)$(security find-identity -v -p codesigning | awk '/"Apple Development:/ {print $2}')}")
+    if (( ${#YASNO_IDENTITIES} != 1 )) || [[ -z "$YASNO_IDENTITIES[1]" ]]; then
+        print -u2 'Set YASNO_SIGNING_IDENTITY to an Apple Development identity, or to - for ad-hoc signing (macOS will ask for permissions again).'
+        exit 1
+    fi
+    YASNO_SIGNING_IDENTITY="$YASNO_IDENTITIES[1]"
+fi
 swift build -c release "$@"
 YASNO_BINARY_DIR="$(swift build -c release "$@" --show-bin-path)"
 YASNO_APP="${YASNO_APP_PATH:-$PWD/dist/Ясно.app}"
@@ -27,7 +35,7 @@ cat > "$YASNO_APP/Contents/Info.plist" <<'PLIST'
 PLIST
 swift scripts/make-icon.swift "$YASNO_APP/Contents/Resources"
 iconutil -c icns "$YASNO_APP/Contents/Resources/AppIcon.iconset" -o "$YASNO_APP/Contents/Resources/AppIcon.icns"
-codesign --force --sign "${YASNO_SIGNING_IDENTITY:--}" --timestamp=none --identifier local.yasno.switcher "$YASNO_APP"
+codesign --force --sign "$YASNO_SIGNING_IDENTITY" --timestamp=none --identifier local.yasno.switcher "$YASNO_APP"
 codesign --verify --deep --strict "$YASNO_APP"
 if [[ "${YASNO_SKIP_DIAGNOSE:-0}" != 1 ]]; then
     "$YASNO_APP/Contents/MacOS/Yasno" --diagnose

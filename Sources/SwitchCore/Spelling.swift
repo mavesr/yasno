@@ -136,6 +136,10 @@ extension Detector {
                       SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) == [best.text]
                   }) else { return nil }
         }
+        // A capital inside a sentence marks a name (Shaikh, Балеевой), except for German
+        // nouns, which are capitalized everywhere.
+        if core.first?.isUppercase == true, Self.isInsideSentence(context),
+           !(best.target.languages.contains(.german) && rank(best.text, languages: [.german]) != nil) { return nil }
         let identical = candidates.filter { $0.text == best.text }
         let contextual = spellingContextPreference(context, candidates: identical.map(\.target)) ?? preferredTargetID
         let chosen: Candidate
@@ -153,6 +157,11 @@ extension Detector {
     /// How much likelier the best of several close words must be. Chosen on the
     /// scenario suite: lower values fix more slips but start changing intended words.
     static let ambiguityMargin = 30.0
+
+    static func isInsideSentence(_ context: String) -> Bool {
+        guard let last = context.last(where: { !$0.isWhitespace }) else { return false }
+        return !".!?…\n".contains(last) && !"\"«“„(".contains(last)
+    }
 
     private static let cognateLetters: Set<Set<Character>> = [
         ["ь", "'"], ["ъ", "'"], ["ы", "и"], ["и", "і"], ["э", "е"], ["е", "є"], ["ё", "е"], ["г", "ґ"], ["ї", "і"]

@@ -410,7 +410,9 @@ public final class Detector {
         guard source.languages.contains(where: { $0 == .russian || $0 == .ukrainian }) else { return false }
         let core = WordText.coreAndSuffix(word).core
         guard core.count >= 2, core.allSatisfy(\.isLetter) else { return false }
-        return rank(core, languages: source.languages) != nil || SystemLexicon.shared.knows(core, languages: source.languages)
+        // Either Cyrillic language: a Russian word may be typed on the Ukrainian layout.
+        let languages: [Language] = [.russian, .ukrainian]
+        return rank(core, languages: languages) != nil || SystemLexicon.shared.knows(core, languages: languages)
     }
 
     /// While a word is still being typed only an unmistakable address converts. A

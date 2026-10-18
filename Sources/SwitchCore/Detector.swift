@@ -308,6 +308,8 @@ public final class Detector {
             if let dictionaryRank { candidateRank = dictionaryRank }
             else if !live, sourceRank == nil, convertedSuffix.isEmpty || typedSymbols, convertedCore.count >= 5,
                     convertedCore.allSatisfy(\.isLetter) || (target.languages.contains(.ukrainian) && WordText.isOrthographicWord(convertedCore)),
+                    // Cheap filter before the slow service: a real form starts like listed words.
+                    isNativePrefix(String(convertedCore.prefix(4)), languages: target.languages),
                     SystemLexicon.shared.knows(convertedCore, languages: target.languages) {
                 // A valid form outside the frequency list (медучреждениях): weak evidence,
                 // below any dictionary word, so every ambiguity rule below still applies.

@@ -19,7 +19,9 @@ public final class SystemLexicon {
 
     /// Nil when the language's spelling dictionary is not installed or the service is off.
     public func knows(_ word: String, language: Language) -> Bool? {
-        guard isEnabled, available.contains(language.rawValue), !word.isEmpty, word.count <= 64 else { return nil }
+        // The service checks each word of a string separately: им]я would pass as им + я.
+        guard isEnabled, available.contains(language.rawValue), word.count <= 64,
+              WordText.isOrthographicWord(word) else { return nil }
         let key = language.rawValue + "\u{1}" + word
         lock.lock()
         defer { lock.unlock() }

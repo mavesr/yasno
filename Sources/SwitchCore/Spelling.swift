@@ -59,7 +59,8 @@ extension Detector {
         let (rawCore, suffix) = WordText.coreAndSuffix(word)
         let core = WordText.canonical(rawCore)
         let letters = core.filter(\.isLetter)
-        guard (5...32).contains(core.count), !letters.isEmpty,
+        let expMin = Int(ProcessInfo.processInfo.environment["YASNO_EXP_MINLEN"] ?? "") ?? 5
+        guard (expMin...32).contains(core.count), !letters.isEmpty,
               core.allSatisfy({ $0.isLetter || ",.;:'[]\\`".contains($0) }),
               letters != letters.uppercased(), !letters.dropFirst().contains(where: \.isUppercase),
               !WebAddress.recognizes(word) else { return nil }
@@ -108,6 +109,16 @@ extension Detector {
         // Merge identical RU/UK output for probability comparison, retaining the chosen
         // layout only when context / explicit preference can resolve that ambiguity.
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
+        let expGuessMin = Int(ProcessInfo.processInfo.environment["YASNO_EXP_GUESS"] ?? "") ?? 0
+        if candidates.isEmpty, expGuessMin > 0, core.count >= expGuessMin,
+           !(core.first?.isUppercase == true && Self.isInsideSentence(context)),
+           !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) {
+            let guesses = Set(source.languages.flatMap { SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) })
+            if guesses.count == 1, let guess = guesses.first, !ignored.contains(guess) {
+                let output = core.first?.isUppercase == true ? guess.prefix(1).uppercased() + guess.dropFirst() : guess
+                return Suggestion(original: word, replacement: output + suffix, target: source, score: 0.2)
+            }
+        }
         guard let best = candidates.first,
               !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) else { return nil }
         // Frequency is not proof of intent: even a rare alternative can be the

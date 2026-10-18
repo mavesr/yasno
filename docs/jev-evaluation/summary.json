@@ -1,0 +1,142 @@
+{
+  "date": "2026-10-18",
+  "test_type": "hand-selected synthetic development cases plus disjoint synthetic holdout, not a production accuracy estimate",
+  "local": {
+    "correct_text": 68,
+    "cases": 80,
+    "p50_ms_classifier_only": 0.0063102083367994055
+  },
+  "models": {
+    "jev-1.13.0": {
+      "cases": 80,
+      "http_200": 80,
+      "correct_action": 45,
+      "correct_text": 47,
+      "p50_ms": 230.58108349999972,
+      "p95_ms": 303.31437499999936,
+      "development": {
+        "cases": 47,
+        "http_200": 47,
+        "correct_action": 29,
+        "correct_text": 29,
+        "p50_ms": 220.1925410000012,
+        "p95_ms": 303.31437499999936
+      },
+      "holdout": {
+        "cases": 33,
+        "http_200": 33,
+        "correct_action": 16,
+        "correct_text": 18,
+        "p50_ms": 234.73491699999994,
+        "p95_ms": 318.0578340000002
+      },
+      "prompt_v2": {
+        "cases": 47,
+        "http_200": 47,
+        "correct_action": 25,
+        "correct_text": 25,
+        "p50_ms": 232.65887500000025,
+        "p95_ms": 297.8309170000006
+      },
+      "hybrid": {
+        "0": {
+          "correct_text": 72,
+          "model_changes": 4,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 1
+        },
+        "0.7": {
+          "correct_text": 68,
+          "model_changes": 0,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 0
+        },
+        "0.8": {
+          "correct_text": 68,
+          "model_changes": 0,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 0
+        },
+        "0.9": {
+          "correct_text": 68,
+          "model_changes": 0,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 0
+        },
+        "0.95": {
+          "correct_text": 68,
+          "model_changes": 0,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 0
+        }
+      }
+    },
+    "jev-1.14.0": {
+      "cases": 80,
+      "http_200": 80,
+      "correct_action": 51,
+      "correct_text": 53,
+      "p50_ms": 221.84743800000018,
+      "p95_ms": 273.62908299999947,
+      "development": {
+        "cases": 47,
+        "http_200": 47,
+        "correct_action": 32,
+        "correct_text": 32,
+        "p50_ms": 222.0123340000004,
+        "p95_ms": 273.62908299999947
+      },
+      "holdout": {
+        "cases": 33,
+        "http_200": 33,
+        "correct_action": 19,
+        "correct_text": 21,
+        "p50_ms": 221.49325,
+        "p95_ms": 278.8081250000003
+      },
+      "prompt_v2": {
+        "cases": 47,
+        "http_200": 47,
+        "correct_action": 26,
+        "correct_text": 26,
+        "p50_ms": 226.0793750000012,
+        "p95_ms": 286.50266699999884
+      },
+      "hybrid": {
+        "0": {
+          "correct_text": 75,
+          "model_changes": 7,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 1
+        },
+        "0.7": {
+          "correct_text": 71,
+          "model_changes": 3,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 1
+        },
+        "0.8": {
+          "correct_text": 69,
+          "model_changes": 1,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 1
+        },
+        "0.9": {
+          "correct_text": 68,
+          "model_changes": 0,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 0
+        },
+        "0.95": {
+          "correct_text": 68,
+          "model_changes": 0,
+          "wrong_text_among_model_changes": 0,
+          "wrong_action_among_model_changes": 0
+        }
+      }
+    }
+  },
+  "recorded_evaluations": 274,
+  "recorded_input_tokens": 157374,
+  "note_usage": "Recorded completed runs only; a preliminary interrupted script made additional calls. This is not the account bill."
+}

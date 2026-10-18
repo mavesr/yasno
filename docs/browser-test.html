@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><title>Ясно — проверка раскладки</title>
+<style>body{max-width:760px;margin:60px auto;background:#f7f8f5;color:#173d35;font:18px system-ui;padding:0 24px}h1{font-size:36px}p{line-height:1.5}label{display:block;margin:24px 0 8px;font-weight:600}input,textarea,[contenteditable]{box-sizing:border-box;width:100%;border:1px solid #b5c5bd;border-radius:12px;background:white;padding:16px;color:#172c25;font:20px system-ui}textarea,[contenteditable]{min-height:120px}.note{font-size:14px;color:#526b60}code{background:#e8ede7;padding:2px 6px;border-radius:4px}</style>
+<h1>Ясно. Проверка в браузере.</h1>
+<p>Локальная страница. Введённый текст никуда не отправляется.</p>
+<p>Выберите ABC. Наберите <code>ghbdtn</code> — ожидается «привет» ещё до пробела. В Russian наберите физическими клавишами <code>account.apple.com</code> — адрес должен исправиться во время набора. Коротко нажмите и отпустите Shift отдельно — замена отменится. В пустом поле Shift переключает ABC → русский → украинский → ABC.</p>
+<p class="note">Shift с буквой даёт заглавную, Shift со стрелкой выделяет текст. Эти сочетания не должны переключать раскладку. Работают оба Shift; удержание дольше 0,4 секунды не переключает язык.</p>
+<p>Украинская Legacy: <code>ghsdbn</code> → «привіт», <code>lzre.</code> → «дякую». В русской раскладке: <code>руддщ</code> → «hello», <code>пгеут</code> → «guten».</p>
+<label for="single">Обычное поле</label><input id="single" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+<label for="multi">Многострочное поле</label><textarea id="multi" spellcheck="false" autocorrect="off"></textarea>
+<label for="rich">Веб-редактор</label><div id="rich" contenteditable="true" role="textbox" aria-label="Веб-редактор" spellcheck="false"></div>
+<label for="password">Пароль — исправлений быть не должно</label><input id="password" type="password" autocomplete="new-password">
+<p class="note">Используйте только вымышленные примеры. Также проверьте: корректные RU/UK слова и правильные адреса не меняются, переход в другое поле отменяет ожидание замены, быстрое продолжение ввода сохраняется.</p>
+<p><button id="load" type="button">Проверка с задержками браузера</button> <output id="load-state">Без нагрузки</output></p>
+<script>
+// Test-only: simulate periodic renderer stalls without changing keyboard handling.
+let loadTimer = null, stopTimer = null;
+const button = document.getElementById('load'), loadState = document.getElementById('load-state');
+function stopLoad() {
+  clearInterval(loadTimer); clearTimeout(stopTimer); loadTimer = null;
+  button.textContent = 'Проверка с задержками браузера'; loadState.textContent = 'Без нагрузки';
+}
+button.addEventListener('click', () => {
+  if (loadTimer !== null) { stopLoad(); return; }
+  button.textContent = 'Остановить нагрузку'; loadState.textContent = 'Задержки по 180 мс, не более 20 секунд';
+  loadTimer = setInterval(() => {
+    const end = performance.now() + 180;
+    while (performance.now() < end) { /* Deliberately block only this local test page. */ }
+  }, 450);
+  stopTimer = setTimeout(stopLoad, 20000);
+});
+</script>
+</html>

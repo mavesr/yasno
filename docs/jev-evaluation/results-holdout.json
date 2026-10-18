@@ -1,0 +1,2028 @@
+{
+  "models": {
+    "status": 200,
+    "ms": 251.69520899999975,
+    "cold_connection": true,
+    "response": {
+      "models": [
+        {
+          "name": "jev-latest",
+          "description": "The latest iteration of TypeSafe's System One Model: Jev",
+          "release_date": "2026-09-10T18:38:01.391457+00:00"
+        },
+        {
+          "name": "jev-preview",
+          "description": "A preview version of `jev-latest`: should be better in most ways",
+          "release_date": "2026-09-10T18:39:06.057655+00:00"
+        }
+      ]
+    }
+  },
+  "smokes": [
+    {
+      "status": 200,
+      "ms": 206.44229200000018,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.59,
+            "probabilities": {
+              "keep": 0.27,
+              "ru": 0.73,
+              "uk": 0.0
+            }
+          },
+          "wrong_layout": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "readiness": {
+            "type": "score",
+            "score": 1.81,
+            "confidence": 0.71,
+            "legend": {
+              "0": "No evidence; preserve text",
+              "1": "Ambiguous evidence; abstain",
+              "2": "Clear evidence of a layout error"
+            },
+            "probabilities": {
+              "0": 0.06,
+              "1": 0.07,
+              "2": 0.87
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 703,
+          "output_tokens": 70
+        }
+      },
+      "model_requested": "jev-1.13.0"
+    },
+    {
+      "status": 200,
+      "ms": 199.5334169999996,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.76,
+            "probabilities": {
+              "keep": 0.15,
+              "ru": 0.84,
+              "uk": 0.01
+            }
+          },
+          "wrong_layout": {
+            "type": "noul",
+            "noul": 0.9
+          },
+          "readiness": {
+            "type": "score",
+            "score": 1.89,
+            "confidence": 0.85,
+            "legend": {
+              "0": "No evidence; preserve text",
+              "1": "Ambiguous evidence; abstain",
+              "2": "Clear evidence of a layout error"
+            },
+            "probabilities": {
+              "0": 0.03,
+              "1": 0.04,
+              "2": 0.93
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 703,
+          "output_tokens": 70
+        }
+      },
+      "model_requested": "jev-1.14.0"
+    }
+  ],
+  "runs": [
+    {
+      "status": 200,
+      "ms": 283.36270799999943,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.76,
+            "probabilities": {
+              "keep": 0.16,
+              "ru": 0.84,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_ru_здравствуйте",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 285.12979200000024,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.76,
+            "probabilities": {
+              "keep": 0.16,
+              "ru": 0.84,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 620,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_ru_настройки",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 293.76162499999924,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.52,
+            "probabilities": {
+              "keep": 0.32,
+              "ru": 0.68,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 613,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_ru_проверка",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 221.8822499999993,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.33,
+            "probabilities": {
+              "keep": 0.44,
+              "ru": 0.55,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_uk_дякую",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 218.02587500000038,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.62,
+            "probabilities": {
+              "keep": 0.22,
+              "ru": 0.75,
+              "uk": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 616,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_uk_сьогодні",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 239.06541599999986,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.52,
+            "probabilities": {
+              "keep": 0.32,
+              "ru": 0.68,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_uk_налаштування",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 215.80849999999964,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.33,
+            "probabilities": {
+              "abc": 0.15,
+              "keep": 0.55,
+              "ru": 0.3
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 611,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_en_settings",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 238.7768750000001,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.28,
+            "probabilities": {
+              "abc": 0.03,
+              "keep": 0.52,
+              "ru": 0.45
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 611,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_en_keyboard",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 253.99870800000014,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.4,
+            "probabilities": {
+              "abc": 0.03,
+              "keep": 0.6,
+              "ru": 0.37
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 601,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_en_please",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 206.40400000000002,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.43,
+            "probabilities": {
+              "abc": 0.34,
+              "keep": 0.62,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 614,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_brand_Docker",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 252.25433299999978,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.31,
+            "probabilities": {
+              "abc": 0.32,
+              "keep": 0.54,
+              "uk": 0.14
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_brand_PostgreSQL",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 249.15862499999974,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.4,
+            "probabilities": {
+              "abc": 0.6,
+              "keep": 0.38,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_brand_Cloudflare",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 234.73491699999994,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.35,
+            "probabilities": {
+              "abc": 0.4,
+              "keep": 0.57,
+              "uk": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 624,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_brand_Supabase",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 222.92920800000005,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.3,
+            "probabilities": {
+              "abc": 0.4,
+              "keep": 0.53,
+              "uk": 0.07
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 621,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_brand_FastAPI",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 237.31583300000025,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.1,
+            "probabilities": {
+              "abc": 0.35,
+              "keep": 0.4,
+              "uk": 0.25
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_brand_TypeScript",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 227.4949580000003,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 616,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_TestFlight",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 246.42933300000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 597,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_Docker",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 232.54987500000013,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 594,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_docker",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 208.47516700000045,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 590,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_thank",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 230.48550000000034,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 601,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_node.js",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 256.1021669999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.95,
+            "probabilities": {
+              "abc": 0.0,
+              "keep": 0.97,
+              "ru": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 649,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_uk",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 224.33049999999977,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "abc": 0.0,
+              "keep": 0.99,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 608,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_keep_ru",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 243.27054200000032,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "uk",
+            "confidence": 0.16,
+            "probabilities": {
+              "keep": 0.31,
+              "ru": 0.25,
+              "uk": 0.44
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 584,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_ctx_ru",
+      "reversed_options": false,
+      "choice": "uk",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 318.0578340000002,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.52,
+            "probabilities": {
+              "keep": 0.25,
+              "ru": 0.6799999999999999,
+              "uk": 0.07
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 584,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_ctx_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 236.26291699999945,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.33,
+            "probabilities": {
+              "keep": 0.38,
+              "ru": 0.55,
+              "uk": 0.07
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 581,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_single_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 264.8104580000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "uk",
+            "confidence": 0.46,
+            "probabilities": {
+              "keep": 0.29,
+              "ru": 0.07,
+              "uk": 0.64
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_single_ru",
+      "reversed_options": false,
+      "choice": "uk",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 202.89987499999995,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_abstain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 233.00020900000007,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "keep": 0.96,
+              "ru": 0.02,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 589,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_prefix_scre",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 233.8821659999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 589,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_prefix_buil",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 215.09474999999955,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "abc": 0.0,
+              "keep": 0.99,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 591,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_prefix_ru",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 221.52866699999942,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.48,
+            "probabilities": {
+              "keep": 0.35,
+              "ru": 0.65,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 609,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_live_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 202.16187499999984,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.52,
+            "probabilities": {
+              "abc": 0.12,
+              "keep": 0.68,
+              "ru": 0.2
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 680,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_live_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 369.7993329999996,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.8,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.87,
+              "uk": 0.12
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 601,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "hold_live_en",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 255.57875000000064,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.82,
+            "probabilities": {
+              "keep": 0.11,
+              "ru": 0.88,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 613,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_ru_проверка",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 278.8081250000003,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.77,
+            "probabilities": {
+              "keep": 0.13,
+              "ru": 0.85,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_ru_здравствуйте",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 308.20062499999955,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.88,
+            "probabilities": {
+              "keep": 0.07,
+              "ru": 0.92,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 620,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_ru_настройки",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 220.2199579999995,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.82,
+            "probabilities": {
+              "keep": 0.1,
+              "ru": 0.88,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_uk_дякую",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 230.61833299999978,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.76,
+            "probabilities": {
+              "keep": 0.14,
+              "ru": 0.84,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_uk_налаштування",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 225.1275829999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.72,
+            "probabilities": {
+              "keep": 0.13,
+              "ru": 0.81,
+              "uk": 0.06
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 616,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_uk_сьогодні",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 221.49325,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.37,
+            "probabilities": {
+              "abc": 0.05,
+              "keep": 0.58,
+              "ru": 0.37
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 601,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_en_please",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 225.9631250000007,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.38,
+            "probabilities": {
+              "abc": 0.09,
+              "keep": 0.59,
+              "ru": 0.32
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 611,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_en_keyboard",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 229.01850000000047,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.23,
+            "probabilities": {
+              "abc": 0.29,
+              "keep": 0.49,
+              "ru": 0.22
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 611,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_en_settings",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 215.60075000000012,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.43,
+            "probabilities": {
+              "abc": 0.62,
+              "keep": 0.34,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 614,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_brand_Docker",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 236.93108400000006,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.09,
+            "probabilities": {
+              "abc": 0.39,
+              "keep": 0.32,
+              "uk": 0.29
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_brand_PostgreSQL",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 237.12804100000005,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.66,
+            "probabilities": {
+              "abc": 0.77,
+              "keep": 0.21,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_brand_Cloudflare",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 196.53370800000047,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.45,
+            "probabilities": {
+              "abc": 0.63,
+              "keep": 0.34,
+              "uk": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 624,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_brand_Supabase",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 196.93512500000134,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.14,
+            "probabilities": {
+              "abc": 0.39,
+              "keep": 0.43,
+              "uk": 0.18
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 621,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_brand_FastAPI",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 230.26641699999928,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.1,
+            "probabilities": {
+              "abc": 0.39,
+              "keep": 0.4,
+              "uk": 0.21
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 638,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_brand_TypeScript",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 211.3911670000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.95,
+            "probabilities": {
+              "keep": 0.97,
+              "ru": 0.02,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 616,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_TestFlight",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 223.8784169999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "keep": 0.96,
+              "ru": 0.03,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 597,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_Docker",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.62499999999972,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "keep": 0.96,
+              "ru": 0.03,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 594,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_docker",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 213.5335420000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 590,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_thank",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 198.45329199999995,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 601,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_node.js",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 200.26116699999898,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.85,
+            "probabilities": {
+              "abc": 0.02,
+              "keep": 0.9,
+              "ru": 0.08
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 649,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_uk",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 215.1859579999993,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.92,
+            "probabilities": {
+              "abc": 0.0,
+              "keep": 0.95,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 608,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_keep_ru",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 196.30904199999932,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "uk",
+            "confidence": 0.16,
+            "probabilities": {
+              "keep": 0.12,
+              "ru": 0.44,
+              "uk": 0.44
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 584,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_ctx_ru",
+      "reversed_options": false,
+      "choice": "uk",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 245.86579099999994,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.58,
+            "probabilities": {
+              "keep": 0.1,
+              "ru": 0.72,
+              "uk": 0.18
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 584,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_ctx_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 215.7985,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.48,
+            "probabilities": {
+              "keep": 0.3,
+              "ru": 0.65,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 581,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_single_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 209.30591700000002,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "uk",
+            "confidence": 0.48,
+            "probabilities": {
+              "keep": 0.27,
+              "ru": 0.08,
+              "uk": 0.65
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_single_ru",
+      "reversed_options": false,
+      "choice": "uk",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 211.52012499999984,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.89,
+            "probabilities": {
+              "keep": 0.9299999999999999,
+              "ru": 0.05,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_abstain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.7368749999997,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "keep": 0.96,
+              "ru": 0.03,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 589,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_prefix_buil",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 263.0984999999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.79,
+            "probabilities": {
+              "keep": 0.86,
+              "ru": 0.06,
+              "uk": 0.08
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 589,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_prefix_scre",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 243.09716700000018,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.92,
+            "probabilities": {
+              "abc": 0.0,
+              "keep": 0.95,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 591,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_prefix_ru",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 200.04875000000055,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.52,
+            "probabilities": {
+              "keep": 0.31,
+              "ru": 0.68,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 609,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_live_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 225.56499999999957,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.61,
+            "probabilities": {
+              "abc": 0.02,
+              "keep": 0.74,
+              "uk": 0.24
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 601,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_live_en",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 226.2875830000013,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.28,
+            "probabilities": {
+              "abc": 0.2,
+              "keep": 0.52,
+              "ru": 0.28
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 680,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "hold_live_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    }
+  ],
+  "notes": "Synthetic hand-selected cases; small convenience sample; no production traffic; credentials not recorded."
+}

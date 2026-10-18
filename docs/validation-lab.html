@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ясно — лаборатория проверки ввода</title>
+<style>
+:root{color-scheme:light dark;font:16px system-ui}body{max-width:1000px;margin:40px auto;padding:0 24px;line-height:1.5}h1{font-size:30px}h2{font-size:19px}section{padding:20px;margin:18px 0;border:1px solid #87968f66;border-radius:14px}label{display:block;font-weight:600;margin:16px 0 5px}input,textarea,[contenteditable],select{box-sizing:border-box;width:100%;padding:12px;font:18px ui-monospace,monospace;border:1px solid #87968f;border-radius:8px;background:Canvas;color:CanvasText}textarea,[contenteditable]{min-height:90px}button{padding:9px 13px;margin:5px 6px 5px 0;font:inherit}code{padding:2px 5px;background:#87968f25;border-radius:4px}.hint{font-size:14px;opacity:.75}.ok{color:#30885c}.bad{color:#c05a41}.grid{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}output{display:block;white-space:pre-wrap}table{border-collapse:collapse;width:100%;font-size:14px}td,th{padding:7px;text-align:left;border-bottom:1px solid #87968f44}@media(max-width:700px){.grid{grid-template-columns:1fr}}
+</style>
+<h1>Ясно. Лаборатория ввода</h1>
+<p>Только локальные тестовые поля. Страница не отправляет запросы, не имитирует нажатия и не считает заполнение через JavaScript проверкой клавиатуры.</p>
+<section><h2>Сценарий</h2><select id="scenario" aria-label="Тестовый сценарий"></select><p id="instruction"></p>
+<p>Ожидаемый текст: <code id="expected"></code></p>
+<label for="editor-kind">Поле для проверки</label><select id="editor-kind"><option value="plain">Обычное поле</option><option value="multi">Многострочное поле</option><option value="rich">Веб-редактор</option><option value="controlled">Поле с обработчиком input</option></select>
+<button id="prepare">Подготовить пустое поле</button><button id="check">Проверить текст и курсор</button><button id="stall">Задержки браузера на 20 секунд</button>
+<output id="verdict" aria-live="polite">Выберите сценарий, подготовьте поле и наберите физическими клавишами.</output>
+<p class="hint">Раскладку переключайте вручную по инструкции. Для опечаток проверьте оба положения настройки «Исправлять опечатки». Ввод инструментами автоматизации может обходить системный перехват клавиатуры; такие результаты не подтверждают работу глобального переключателя.</p></section>
+<section><h2>Поля</h2><div class="grid"><div><label for="plain">Обычное поле</label><input id="plain" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off">
+<label for="multi">Многострочное поле</label><textarea id="multi" spellcheck="false" autocorrect="off"></textarea></div>
+<div><label for="rich">Веб-редактор</label><div id="rich" contenteditable="true" role="textbox" aria-label="Веб-редактор" spellcheck="false"></div>
+<label for="controlled">Поле с обработчиком input</label><input id="controlled" spellcheck="false" autocomplete="off" autocorrect="off"><output id="model-state" class="hint">Обработчик input ещё не вызывался</output></div></div>
+<label for="secure">Пароль — только вымышленный текст; исправлений быть не должно</label><input id="secure" type="password" autocomplete="new-password" spellcheck="false">
+<p class="hint">Парольное поле не читается проверкой, не попадает в отчёт и не регистрируется обработчиками страницы.</p>
+<label for="readonly">Поле только для чтения</label><input id="readonly" readonly value="Этот текст должен сохраниться">
+</section>
+<section><h2>Смена фокуса и выделения</h2><p>Начните слово в одном поле и продолжите в другом. Старый префикс не должен попадать в новое поле. Проверьте Shift со стрелкой, оба Shift, удержание Shift более 0,4 секунды, Backspace, переключение раскладки через меню, копирование и вставку.</p>
+<p>Для проверки диапазонов вставьте в начале тестового поля <code>👩‍💻 привет</code>, поставьте курсор после пробела и наберите следующее слово. Исправление не должно менять эмодзи, соседние слова или перенос строки.</p></section>
+<section><h2>Результаты этого сеанса</h2><table><thead><tr><th>Сценарий</th><th>Поле</th><th>Текст</th><th>Курсор</th><th>Результат</th></tr></thead><tbody id="results"></tbody></table>
+<button id="export">Скачать тестовый отчёт JSON</button><p class="hint">В отчёте только результаты явно нажатой проверки выбранного непарольного поля. Используйте вымышленные примеры. Ничего не сохраняется между перезагрузками страницы.</p></section>
+<script>
+'use strict';
+const cases=[
+['ru-live','Переключение в русский до пробела','ABC: наберите ghbdtn без пробела.','привет'],
+['ru-inflection','Словоформа до пробела','ABC: наберите ghjlevfq без пробела.','продумай'],
+['ru-switching','Переключались','ABC: наберите gthtrk.xfkbcm без пробела.','переключались'],
+['uk-apostrophe','Украинское слово с апострофом','ABC: наберите bv`z без пробела. Здесь ` — обычная клавиша над Tab, апостроф в Ukrainian Legacy.','ім\'я'],
+['symbol-dollar','Символ по физической клавише','ABC: нажмите Shift+4 ($), отпустите клавиши, затем отдельно короткий Shift.','%'],
+['symbol-percent','Обратное преобразование символа','Russian или Ukrainian Legacy: нажмите Shift+4 (%), отпустите клавиши, затем отдельно короткий Shift.','$'],
+['letter-middle','Замена одной буквы','Введите или вставьте «приdет», удалите d. В ABC наберите d в той же позиции и отдельно короткий Shift. Затем стрелкой вправо перейдите в конец слова.','привет'],
+['letter-first','Замена первой буквы','Введите или вставьте «gривет», удалите g. В ABC наберите g в той же позиции и отдельно короткий Shift. Затем перейдите в конец слова.','привет'],
+['letter-last','Замена последней буквы','Введите или вставьте «привеn», удалите n. В ABC наберите n в той же позиции и отдельно короткий Shift.','привет'],
+['uk-live','Ukrainian Legacy до пробела','ABC: наберите ghsdbn без пробела.','привіт'],
+['uk-punctuation','Ю и пунктуация','ABC: наберите lzre.! и затем пробел.','дякую! '],
+['en-live','Переключение в английский','Russian: наберите клавиши hello без пробела.','hello'],
+['address','Адрес без пробела','Russian: наберите клавиши account.apple.com без пробела.','account.apple.com'],
+['typo-ru','Русская опечатка','Включите исправление опечаток. Russian: наберите првиет и пробел.','привет '],
+['typo-en','Английская опечатка','Включите исправление опечаток. ABC: наберите helllo и пробел.','hello '],
+['typo-mixed','Раскладка и опечатка','Включите исправление опечаток. ABC: наберите ghdbtn и пробел. Предпочтительный язык — русский.','привет '],
+['typo-off','Выключенное исправление опечаток','Выключите исправление опечаток. Russian: наберите првиет и пробел.','првиет '],
+['undo','Отмена опечатки','Включите исправление опечаток. Russian: наберите првиет и пробел, затем короткий Shift.','првиет '],
+['valid','Правильные слова','ABC: наберите form from quiet quite и пробел.','form from quiet quite '],
+['native','Правильные словоформы','Russian: наберите словари сообщениям и пробел.','словари сообщениям '],
+['code','Идентификатор','ABC: наберите hello_world и пробел.','hello_world '],
+['email','Электронная почта','ABC: наберите user@example.com и пробел.','user@example.com ']
+];
+const byId=id=>document.getElementById(id), select=byId('scenario'), kind=byId('editor-kind'), records=[];
+cases.forEach((c,i)=>{const option=document.createElement('option');option.value=i;option.textContent=c[1];select.append(option)});
+function chosen(){return cases[Number(select.value)]}function show(){byId('instruction').textContent=chosen()[2];byId('expected').textContent=chosen()[3];byId('verdict').textContent='Ожидает физического ввода';byId('verdict').className=''}select.addEventListener('change',show);show();
+byId('prepare').addEventListener('click',()=>{const el=byId(kind.value);if(el.isContentEditable)el.textContent='';else el.value='';byId('verdict').textContent='Поле подготовлено; выполните инструкцию';el.focus()});
+let controlledModel='';byId('controlled').addEventListener('input',event=>{controlledModel=event.target.value;byId('model-state').textContent='Модель после input: '+controlledModel});
+function selectionIn(el){if(!el.isContentEditable)return [el.selectionStart,el.selectionEnd];const sel=getSelection();if(!sel.rangeCount||!el.contains(sel.anchorNode)||!el.contains(sel.focusNode))return null;const range=sel.getRangeAt(0),prefix=range.cloneRange();prefix.selectNodeContents(el);prefix.setEnd(range.startContainer,range.startOffset);return [prefix.toString().length,prefix.toString().length+range.toString().length]}
+let lastSelection=null;document.addEventListener('selectionchange',()=>{const el=byId(kind.value);if(document.activeElement===el)lastSelection=selectionIn(el)});
+byId('check').addEventListener('pointerdown',()=>{lastSelection=selectionIn(byId(kind.value))});
+byId('check').addEventListener('click',()=>{const c=chosen(),el=byId(kind.value),actual=(el.isContentEditable?el.textContent:el.value).replace(/[\u00a0\u202f]/g,' '),caret=lastSelection;const textOK=actual===c[3],caretOK=caret!==null&&caret[0]===actual.length&&caret[1]===actual.length,modelOK=kind.value!=='controlled'||controlledModel===actual;const result={scenario:c[0],field:kind.value,expected:c[3],actual,caret,textOK,caretOK,modelOK,passed:textOK&&caretOK&&modelOK};records.push(result);byId('verdict').textContent=(result.passed?'PASS':'FAIL')+' · текст '+(textOK?'совпадает':'не совпадает')+' · курсор '+JSON.stringify(caret)+' · модель '+(modelOK?'совпадает':'не совпадает');byId('verdict').className=result.passed?'ok':'bad';const tr=document.createElement('tr');[c[1],kind.value,actual,JSON.stringify(caret),result.passed?'PASS':'FAIL'].forEach(text=>{const td=document.createElement('td');td.textContent=text;tr.append(td)});byId('results').append(tr)});
+let interval=null,timer=null;function stop(){clearInterval(interval);clearTimeout(timer);interval=null;byId('stall').textContent='Задержки браузера на 20 секунд'}byId('stall').addEventListener('click',()=>{if(interval!==null){stop();return}byId('stall').textContent='Остановить задержки';interval=setInterval(()=>{const end=performance.now()+180;while(performance.now()<end){}},450);timer=setTimeout(stop,20000)});
+byId('export').addEventListener('click',()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({schema:1,scope:'Manual physical typing required; no password capture',browser:navigator.userAgent,results:records},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='yasno-browser-validation.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+</script></html>

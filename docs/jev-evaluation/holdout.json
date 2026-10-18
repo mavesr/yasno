@@ -1,0 +1,585 @@
+[
+  {
+    "baseline" : "ru",
+    "baseline_replacement" : "проверка",
+    "candidates" : {
+      "keep" : "ghjdthrf",
+      "ru" : "проверка",
+      "uk" : "проверка"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "ru",
+    "id" : "hold_ru_проверка",
+    "local_ms" : 0.006905416666995734,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "ghjdthrf"
+  },
+  {
+    "baseline" : "ru",
+    "baseline_replacement" : "здравствуйте",
+    "candidates" : {
+      "keep" : "plhfdcndeqnt",
+      "ru" : "здравствуйте",
+      "uk" : "здравствуйте"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "ru",
+    "id" : "hold_ru_здравствуйте",
+    "local_ms" : 0.0097329166601412,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "plhfdcndeqnt"
+  },
+  {
+    "baseline" : "ru",
+    "baseline_replacement" : "настройки",
+    "candidates" : {
+      "keep" : "yfcnhjqrb",
+      "ru" : "настройки",
+      "uk" : "настройкі"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "ru",
+    "id" : "hold_ru_настройки",
+    "local_ms" : 0.007616250077262521,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "yfcnhjqrb"
+  },
+  {
+    "baseline" : "uk",
+    "baseline_replacement" : "дякую",
+    "candidates" : {
+      "keep" : "lzre.",
+      "ru" : "дякую",
+      "uk" : "дякую"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "uk",
+    "id" : "hold_uk_дякую",
+    "local_ms" : 0.00406666673370637,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "lzre."
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "yfkfinedfyyz",
+    "candidates" : {
+      "keep" : "yfkfinedfyyz",
+      "ru" : "налаштування",
+      "uk" : "налаштування"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "uk",
+    "id" : "hold_uk_налаштування",
+    "local_ms" : 0.013096249895170331,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "yfkfinedfyyz"
+  },
+  {
+    "baseline" : "uk",
+    "baseline_replacement" : "сьогодні",
+    "candidates" : {
+      "keep" : "cmjujlyb",
+      "ru" : "сьогодни",
+      "uk" : "сьогодні"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "uk",
+    "id" : "hold_uk_сьогодні",
+    "local_ms" : 0.008037083316594362,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "cmjujlyb"
+  },
+  {
+    "baseline" : "abc",
+    "baseline_replacement" : "please",
+    "candidates" : {
+      "abc" : "please",
+      "keep" : "здуфиу",
+      "ru" : "здуфыу"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "abc",
+    "id" : "hold_en_please",
+    "local_ms" : 0.01233375005540438,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "uk",
+    "typed" : "здуфиу"
+  },
+  {
+    "baseline" : "abc",
+    "baseline_replacement" : "keyboard",
+    "candidates" : {
+      "abc" : "keyboard",
+      "keep" : "луніщфкв",
+      "ru" : "лунищфкв"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "abc",
+    "id" : "hold_en_keyboard",
+    "local_ms" : 0.013557500060414895,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "uk",
+    "typed" : "луніщфкв"
+  },
+  {
+    "baseline" : "abc",
+    "baseline_replacement" : "settings",
+    "candidates" : {
+      "abc" : "settings",
+      "keep" : "иуеештпи",
+      "ru" : "ыуеештпы"
+    },
+    "category" : "wrong_layout",
+    "context" : "",
+    "expected" : "abc",
+    "id" : "hold_en_settings",
+    "local_ms" : 0.015430000057676807,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "uk",
+    "typed" : "иуеештпи"
+  },
+  {
+    "baseline" : "abc",
+    "baseline_replacement" : "Docker",
+    "candidates" : {
+      "abc" : "Docker",
+      "keep" : "Вщслук",
+      "uk" : "Вщслук"
+    },
+    "category" : "unknown_word",
+    "context" : "Настраиваю ",
+    "expected" : "abc",
+    "id" : "hold_brand_Docker",
+    "local_ms" : 0.009435833344468847,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "Вщслук"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "ЗщыепкуЫЙД",
+    "candidates" : {
+      "abc" : "PostgreSQL",
+      "keep" : "ЗщыепкуЫЙД",
+      "uk" : "ЗщиепкуИЙД"
+    },
+    "category" : "unknown_word",
+    "context" : "Настраиваю ",
+    "expected" : "abc",
+    "id" : "hold_brand_PostgreSQL",
+    "local_ms" : 0.011227083305129781,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "ЗщыепкуЫЙД"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "Сдщгвадфку",
+    "candidates" : {
+      "abc" : "Cloudflare",
+      "keep" : "Сдщгвадфку",
+      "uk" : "Сдщгвадфку"
+    },
+    "category" : "unknown_word",
+    "context" : "Настраиваю ",
+    "expected" : "abc",
+    "id" : "hold_brand_Cloudflare",
+    "local_ms" : 0.022734166705049574,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "Сдщгвадфку"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "Ыгзфифыу",
+    "candidates" : {
+      "abc" : "Supabase",
+      "keep" : "Ыгзфифыу",
+      "uk" : "Игзфіфиу"
+    },
+    "category" : "unknown_word",
+    "context" : "Настраиваю ",
+    "expected" : "abc",
+    "id" : "hold_brand_Supabase",
+    "local_ms" : 0.017690416716504842,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "Ыгзфифыу"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "АфыеФЗШ",
+    "candidates" : {
+      "abc" : "FastAPI",
+      "keep" : "АфыеФЗШ",
+      "uk" : "АфиеФЗШ"
+    },
+    "category" : "unknown_word",
+    "context" : "Настраиваю ",
+    "expected" : "abc",
+    "id" : "hold_brand_FastAPI",
+    "local_ms" : 0.00740916671929881,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "АфыеФЗШ"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "ЕнзуЫскшзе",
+    "candidates" : {
+      "abc" : "TypeScript",
+      "keep" : "ЕнзуЫскшзе",
+      "uk" : "ЕнзуИскшзе"
+    },
+    "category" : "unknown_word",
+    "context" : "Настраиваю ",
+    "expected" : "abc",
+    "id" : "hold_brand_TypeScript",
+    "local_ms" : 0.010875833395402879,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "ЕнзуЫскшзе"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "TestFlight",
+    "candidates" : {
+      "keep" : "TestFlight",
+      "ru" : "ЕуыеАдшпре",
+      "uk" : "ЕуиеАдшпре"
+    },
+    "category" : "preserve",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_keep_TestFlight",
+    "local_ms" : 0.003279583324911073,
+    "phase" : "completed",
+    "source" : "abc",
+    "typed" : "TestFlight"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "Docker",
+    "candidates" : {
+      "keep" : "Docker",
+      "ru" : "Вщслук",
+      "uk" : "Вщслук"
+    },
+    "category" : "preserve",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_keep_Docker",
+    "local_ms" : 0.0057120833662338555,
+    "phase" : "completed",
+    "source" : "abc",
+    "typed" : "Docker"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "docker",
+    "candidates" : {
+      "keep" : "docker",
+      "ru" : "вщслук",
+      "uk" : "вщслук"
+    },
+    "category" : "preserve",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_keep_docker",
+    "local_ms" : 0.005682083283318207,
+    "phase" : "completed",
+    "source" : "abc",
+    "typed" : "docker"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "thank",
+    "candidates" : {
+      "keep" : "thank",
+      "ru" : "ерфтл",
+      "uk" : "ерфтл"
+    },
+    "category" : "preserve",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_keep_thank",
+    "local_ms" : 0.0018612499115988612,
+    "phase" : "completed",
+    "source" : "abc",
+    "typed" : "thank"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "node.js",
+    "candidates" : {
+      "keep" : "node.js",
+      "ru" : "тщвуюоы",
+      "uk" : "тщвуюои"
+    },
+    "category" : "preserve",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_keep_node.js",
+    "local_ms" : 0.006306666764430702,
+    "phase" : "completed",
+    "source" : "abc",
+    "typed" : "node.js"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "налаштування",
+    "candidates" : {
+      "abc" : "yfkfinedfyyz",
+      "keep" : "налаштування",
+      "ru" : "налаштування"
+    },
+    "category" : "preserve",
+    "context" : "Відкрий ",
+    "expected" : "keep",
+    "id" : "hold_keep_uk",
+    "local_ms" : 0.025362916640006006,
+    "phase" : "completed",
+    "source" : "uk",
+    "typed" : "налаштування"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "больше",
+    "candidates" : {
+      "abc" : ",jkmit",
+      "keep" : "больше",
+      "uk" : "больше"
+    },
+    "category" : "preserve",
+    "context" : "Хочу ",
+    "expected" : "keep",
+    "id" : "hold_keep_ru",
+    "local_ms" : 0.0063429166038986295,
+    "phase" : "completed",
+    "source" : "ru",
+    "typed" : "больше"
+  },
+  {
+    "baseline" : "ru",
+    "baseline_replacement" : "ты",
+    "candidates" : {
+      "keep" : "ns",
+      "ru" : "ты",
+      "uk" : "ти"
+    },
+    "category" : "context",
+    "context" : "Скажи, как ",
+    "expected" : "ru",
+    "id" : "hold_ctx_ru",
+    "local_ms" : 0.007669166661798954,
+    "phase" : "completed",
+    "preferred" : "uk",
+    "source" : "abc",
+    "typed" : "ns"
+  },
+  {
+    "baseline" : "uk",
+    "baseline_replacement" : "ти",
+    "candidates" : {
+      "keep" : "ns",
+      "ru" : "ты",
+      "uk" : "ти"
+    },
+    "category" : "context",
+    "context" : "Скажи, як ",
+    "expected" : "uk",
+    "id" : "hold_ctx_uk",
+    "local_ms" : 0.007739166758256033,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "ns"
+  },
+  {
+    "baseline" : "uk",
+    "baseline_replacement" : "і",
+    "candidates" : {
+      "keep" : "b",
+      "ru" : "и",
+      "uk" : "і"
+    },
+    "category" : "context",
+    "context" : "Вона ",
+    "expected" : "uk",
+    "id" : "hold_single_uk",
+    "local_ms" : 0.003456249978626147,
+    "phase" : "completed",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "b"
+  },
+  {
+    "baseline" : "ru",
+    "baseline_replacement" : "и",
+    "candidates" : {
+      "keep" : "b",
+      "ru" : "и",
+      "uk" : "і"
+    },
+    "category" : "context",
+    "context" : "Она ",
+    "expected" : "ru",
+    "id" : "hold_single_ru",
+    "local_ms" : 0.0030037500255275518,
+    "phase" : "completed",
+    "preferred" : "uk",
+    "source" : "abc",
+    "typed" : "b"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "f",
+    "candidates" : {
+      "keep" : "f",
+      "ru" : "а",
+      "uk" : "а"
+    },
+    "category" : "abstain",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_abstain",
+    "local_ms" : 0.0011345832899678499,
+    "phase" : "completed",
+    "source" : "abc",
+    "typed" : "f"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "scre",
+    "candidates" : {
+      "keep" : "scre",
+      "ru" : "ыску",
+      "uk" : "иску"
+    },
+    "category" : "prefix",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_prefix_scre",
+    "local_ms" : 0.00014666657079942524,
+    "phase" : "typing",
+    "source" : "abc",
+    "typed" : "scre"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "buil",
+    "candidates" : {
+      "keep" : "buil",
+      "ru" : "игшд",
+      "uk" : "ігшд"
+    },
+    "category" : "prefix",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_prefix_buil",
+    "local_ms" : 0.00014125005691312253,
+    "phase" : "typing",
+    "source" : "abc",
+    "typed" : "buil"
+  },
+  {
+    "baseline" : "keep",
+    "baseline_replacement" : "пров",
+    "candidates" : {
+      "abc" : "ghjd",
+      "keep" : "пров",
+      "uk" : "пров"
+    },
+    "category" : "prefix",
+    "context" : "",
+    "expected" : "keep",
+    "id" : "hold_prefix_ru",
+    "local_ms" : 0.0027762500394601375,
+    "phase" : "typing",
+    "source" : "ru",
+    "typed" : "пров"
+  },
+  {
+    "baseline" : "ru",
+    "baseline_replacement" : "спасибо",
+    "candidates" : {
+      "keep" : "cgfcb,j",
+      "ru" : "спасибо",
+      "uk" : "спасібо"
+    },
+    "category" : "live",
+    "context" : "",
+    "expected" : "ru",
+    "id" : "hold_live_ru",
+    "local_ms" : 0.005897083319723606,
+    "phase" : "typing",
+    "preferred" : "ru",
+    "source" : "abc",
+    "typed" : "cgfcb,j"
+  },
+  {
+    "baseline" : "abc",
+    "baseline_replacement" : "screen",
+    "candidates" : {
+      "abc" : "screen",
+      "keep" : "ыскуут",
+      "uk" : "искуут"
+    },
+    "category" : "live",
+    "context" : "",
+    "expected" : "abc",
+    "id" : "hold_live_en",
+    "local_ms" : 0.013511249999282882,
+    "phase" : "typing",
+    "preferred" : "ru",
+    "source" : "ru",
+    "typed" : "ыскуут"
+  },
+  {
+    "baseline" : "abc",
+    "baseline_replacement" : "developer.mozilla.org",
+    "candidates" : {
+      "abc" : "developer.mozilla.org",
+      "keep" : "вумудщзукюьщяшддфющкп",
+      "ru" : "вумудщзукюьщяшддфющкп"
+    },
+    "category" : "live",
+    "context" : "",
+    "expected" : "abc",
+    "id" : "hold_live_domain",
+    "local_ms" : 0.006313749909168109,
+    "phase" : "typing",
+    "preferred" : "ru",
+    "source" : "uk",
+    "typed" : "вумудщзукюьщяшддфющкп"
+  }
+]

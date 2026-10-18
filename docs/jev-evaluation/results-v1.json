@@ -1,0 +1,3304 @@
+{
+  "models": {
+    "status": 200,
+    "ms": 3257.482041,
+    "cold_connection": true,
+    "response": {
+      "models": [
+        {
+          "name": "jev-latest",
+          "description": "The latest iteration of TypeSafe's System One Model: Jev",
+          "release_date": "2026-09-10T18:38:01.391457+00:00"
+        },
+        {
+          "name": "jev-preview",
+          "description": "A preview version of `jev-latest`: should be better in most ways",
+          "release_date": "2026-09-10T18:39:06.057655+00:00"
+        }
+      ]
+    }
+  },
+  "smokes": [
+    {
+      "status": 200,
+      "ms": 217.6919589999997,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.86,
+            "probabilities": {
+              "keep": 0.09,
+              "ru": 0.91,
+              "uk": 0.0
+            }
+          },
+          "wrong_layout": {
+            "type": "noul",
+            "noul": 0.97
+          },
+          "readiness": {
+            "type": "score",
+            "score": 1.98,
+            "confidence": 0.95,
+            "legend": {
+              "0": "No evidence; preserve text",
+              "1": "Ambiguous evidence; abstain",
+              "2": "Clear evidence of a layout error"
+            },
+            "probabilities": {
+              "0": 0.01,
+              "1": 0.01,
+              "2": 0.98
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 692,
+          "output_tokens": 70
+        }
+      },
+      "model_requested": "jev-1.13.0"
+    },
+    {
+      "status": 200,
+      "ms": 224.30804200000054,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.02,
+              "ru": 0.98,
+              "uk": 0.0
+            }
+          },
+          "wrong_layout": {
+            "type": "noul",
+            "noul": 0.98
+          },
+          "readiness": {
+            "type": "score",
+            "score": 1.98,
+            "confidence": 0.95,
+            "legend": {
+              "0": "No evidence; preserve text",
+              "1": "Ambiguous evidence; abstain",
+              "2": "Clear evidence of a layout error"
+            },
+            "probabilities": {
+              "0": 0.01,
+              "1": 0.01,
+              "2": 0.98
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 692,
+          "output_tokens": 70
+        }
+      },
+      "model_requested": "jev-1.14.0"
+    }
+  ],
+  "runs": [
+    {
+      "status": 200,
+      "ms": 259.3032920000002,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.88,
+            "probabilities": {
+              "keep": 0.08,
+              "ru": 0.92,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 602,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "ru_greeting",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 303.31437499999936,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.48,
+            "probabilities": {
+              "keep": 0.33,
+              "ru": 0.65,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 605,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "uk_greeting",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 315.78375000000136,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.91,
+            "probabilities": {
+              "abc": 0.04,
+              "keep": 0.94,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 596,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "en_greeting",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 208.69345800000082,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.76,
+            "probabilities": {
+              "abc": 0.13,
+              "keep": 0.84,
+              "uk": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "de_thanks",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 218.23374999999956,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.49,
+            "probabilities": {
+              "keep": 0.34,
+              "ru": 0.66,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 609,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "browser",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 234.7211250000001,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.79,
+            "probabilities": {
+              "abc": 0.12,
+              "keep": 0.86,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 625,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "appconnect",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 202.26987499999893,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.25,
+            "probabilities": {
+              "abc": 0.48,
+              "keep": 0.5,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 669,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "account_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 244.72670799999997,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.35,
+            "probabilities": {
+              "abc": 0.1,
+              "keep": 0.57,
+              "ru": 0.33
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 681,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 296.8559159999984,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.59,
+            "probabilities": {
+              "abc": 0.08,
+              "keep": 0.73,
+              "uk": 0.19
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 728,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "url_path",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 211.20720800000115,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "uk",
+            "confidence": 0.14,
+            "probabilities": {
+              "keep": 0.17,
+              "ru": 0.4,
+              "uk": 0.43
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "pronoun_ru",
+      "reversed_options": false,
+      "choice": "uk",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 235.12924999999996,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.7,
+            "probabilities": {
+              "keep": 0.15,
+              "ru": 0.8,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "pronoun_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 210.88254199999847,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.02,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "pronoun_ambiguous",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 196.46350000000012,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "single_ambiguous",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.72787499999936,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.45,
+            "probabilities": {
+              "keep": 0.37,
+              "ru": 0.63,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 578,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "single_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 220.27920899999918,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.4,
+            "probabilities": {
+              "keep": 0.35,
+              "ru": 0.6,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "single_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 236.874499999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.74,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.83,
+              "ru": 0.16
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 594,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "native_uk_collision",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 242.61287499999895,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.74,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.83,
+              "ru": 0.16
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 626,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "native_uk",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 223.93691699999962,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "abc": 0.0,
+              "keep": 0.98,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 631,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "native_ru",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 213.04354199999943,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.69,
+            "probabilities": {
+              "abc": 0.02,
+              "keep": 0.79,
+              "uk": 0.19
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 637,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "native_ru_rare",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 220.1925410000012,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 590,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_hello",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 219.8284580000003,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_host",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 254.42295799999926,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 582,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_web",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 247.17475000000098,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_code",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 230.6766669999991,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 582,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_API",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 245.6902920000008,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 604,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_SwiftUI",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 232.32266599999997,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_I",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 281.54808400000064,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_a",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 219.75170800000043,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_Jev",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 194.33091700000028,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 593,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_Xcode",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 266.02845899999926,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.53,
+            "probabilities": {
+              "abc": 0.08,
+              "keep": 0.69,
+              "uk": 0.23
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 614,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_GitHub",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 329.5144170000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.76,
+            "probabilities": {
+              "abc": 0.12,
+              "keep": 0.84,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 619,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_ChatGPT",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 213.0552080000001,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.33,
+            "probabilities": {
+              "abc": 0.55,
+              "keep": 0.39,
+              "uk": 0.06
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_Kubernetes",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 217.9741660000012,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.61,
+            "probabilities": {
+              "abc": 0.09,
+              "keep": 0.74,
+              "uk": 0.17
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_TestFlight",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 210.32104200000035,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.41,
+            "probabilities": {
+              "abc": 0.37,
+              "keep": 0.61,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 609,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_nginx",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 203.03187499999888,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.34,
+            "probabilities": {
+              "abc": 0.38,
+              "keep": 0.5599999999999999,
+              "uk": 0.06
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 621,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_webhook",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 208.2708750000002,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.58,
+            "probabilities": {
+              "abc": 0.26,
+              "keep": 0.72,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 622,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_frontend",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 213.17933299999936,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.45,
+            "probabilities": {
+              "abc": 0.63,
+              "keep": 0.34,
+              "uk": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 653,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_microservices",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 204.58149999999975,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 603,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "code_identifier",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 197.13370800000087,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 649,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "mail",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 217.618667,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 652,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "native_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 228.36916600000023,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "prefix_acco",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.2982920000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 589,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "prefix_brow",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 262.83275000000117,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "prefix_info",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 253.7388329999999,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "prefix_hell",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 235.1754580000005,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.8,
+            "probabilities": {
+              "keep": 0.13,
+              "ru": 0.87,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 602,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "live_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 218.09008299999988,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.98,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 596,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "live_hello",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 219.63495800000032,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.89,
+            "probabilities": {
+              "abc": 0.05,
+              "keep": 0.9299999999999999,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 660,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "live_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 204.77695900000015,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "uk",
+            "confidence": 0.22,
+            "probabilities": {
+              "uk": 0.48,
+              "ru": 0.36,
+              "keep": 0.16
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "pronoun_ru",
+      "reversed_options": true,
+      "choice": "uk",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 215.68087500000033,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.95,
+            "probabilities": {
+              "uk": 0.0,
+              "ru": 0.03,
+              "keep": 0.97
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "pronoun_ambiguous",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 272.4006659999993,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.62,
+            "probabilities": {
+              "uk": 0.14,
+              "ru": 0.75,
+              "keep": 0.11
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "pronoun_uk",
+      "reversed_options": true,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 238.94662500000052,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "uk": 0.0,
+              "ru": 0.02,
+              "keep": 0.98
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "single_ambiguous",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 198.72083299999943,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "uk": 0.0,
+              "ru": 0.01,
+              "keep": 0.99
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 582,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "preserve_API",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 217.29120900000078,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.64,
+            "probabilities": {
+              "ru": 0.24,
+              "keep": 0.76,
+              "abc": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 594,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "native_uk_collision",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 202.54545799999946,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.31,
+            "probabilities": {
+              "uk": 0.08,
+              "keep": 0.38,
+              "abc": 0.54
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "unknown_Kubernetes",
+      "reversed_options": true,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 260.1416249999993,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.13.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "uk": 0.0,
+              "ru": 0.01,
+              "keep": 0.99
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.13.0",
+      "case_id": "prefix_acco",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 261.7751659999996,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.85,
+            "probabilities": {
+              "abc": 0.02,
+              "keep": 0.9,
+              "uk": 0.08
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 596,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "en_greeting",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 283.5622079999993,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.95,
+            "probabilities": {
+              "keep": 0.03,
+              "ru": 0.97,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 602,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "ru_greeting",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 294.63220800000124,
+      "cold_connection": true,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.67,
+            "probabilities": {
+              "keep": 0.11,
+              "ru": 0.78,
+              "uk": 0.11
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 605,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "uk_greeting",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 223.70387499999998,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.4,
+            "probabilities": {
+              "abc": 0.36,
+              "keep": 0.6,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 598,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "de_thanks",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 233.76620900000057,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.67,
+            "probabilities": {
+              "abc": 0.18,
+              "keep": 0.78,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 625,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "appconnect",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 273.62908299999947,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.76,
+            "probabilities": {
+              "keep": 0.14,
+              "ru": 0.84,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 609,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "browser",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 225.42158299999926,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.59,
+            "probabilities": {
+              "abc": 0.73,
+              "keep": 0.23,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 669,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "account_domain",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 245.80862500000046,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.27,
+            "probabilities": {
+              "abc": 0.12,
+              "keep": 0.51,
+              "ru": 0.37
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 681,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 225.86345799999918,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.34,
+            "probabilities": {
+              "abc": 0.15,
+              "keep": 0.56,
+              "uk": 0.29
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 728,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "url_path",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 208.78650000000044,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.3,
+            "probabilities": {
+              "keep": 0.08,
+              "ru": 0.53,
+              "uk": 0.39
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "pronoun_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.2555829999998,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.62,
+            "probabilities": {
+              "keep": 0.07,
+              "ru": 0.75,
+              "uk": 0.18
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "pronoun_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 209.0632499999998,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.86,
+            "probabilities": {
+              "keep": 0.91,
+              "ru": 0.06,
+              "uk": 0.03
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "pronoun_ambiguous",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 225.91987500000067,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "keep": 0.96,
+              "ru": 0.03,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "single_ambiguous",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.33279200000032,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.31,
+            "probabilities": {
+              "keep": 0.44,
+              "ru": 0.54,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 578,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "single_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.16908299999972,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.4,
+            "probabilities": {
+              "keep": 0.2,
+              "ru": 0.6,
+              "uk": 0.2
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 580,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "single_uk",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 202.8614169999994,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.64,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.76,
+              "ru": 0.23
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 594,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "native_uk_collision",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 221.68254199999993,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.4,
+            "probabilities": {
+              "abc": 0.05,
+              "keep": 0.6,
+              "ru": 0.35
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 626,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "native_uk",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 245.37320800000018,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.92,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.95,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 631,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "native_ru",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 211.02579200000093,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.59,
+            "probabilities": {
+              "abc": 0.02,
+              "keep": 0.73,
+              "uk": 0.25
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 637,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "native_ru_rare",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 218.43604100000036,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "keep": 0.96,
+              "ru": 0.03,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 590,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_hello",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 235.40425000000022,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.01,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_host",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 195.97545900000136,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 582,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_web",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 238.4874580000016,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.92,
+            "probabilities": {
+              "keep": 0.95,
+              "ru": 0.04,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_code",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 222.55933299999953,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.02,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 582,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_API",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 215.8341249999989,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 604,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_SwiftUI",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 228.35158299999847,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.01,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_I",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 262.01750000000067,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.98,
+            "probabilities": {
+              "keep": 0.99,
+              "ru": 0.01,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_a",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 229.83608300000037,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.76,
+            "probabilities": {
+              "keep": 0.84,
+              "ru": 0.12,
+              "uk": 0.04
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_Jev",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 216.88712499999951,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.95,
+            "probabilities": {
+              "keep": 0.97,
+              "ru": 0.03,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 593,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_Xcode",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 220.43099999999959,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.35,
+            "probabilities": {
+              "abc": 0.38,
+              "keep": 0.57,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 619,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_ChatGPT",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 205.44895799999983,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.33,
+            "probabilities": {
+              "abc": 0.3,
+              "keep": 0.55,
+              "uk": 0.15
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 614,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_GitHub",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 222.47341699999978,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.41,
+            "probabilities": {
+              "abc": 0.61,
+              "keep": 0.28,
+              "uk": 0.11
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_Kubernetes",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 219.21487500000046,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.38,
+            "probabilities": {
+              "abc": 0.13,
+              "keep": 0.59,
+              "uk": 0.28
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_TestFlight",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 202.55174999999957,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.49,
+            "probabilities": {
+              "abc": 0.66,
+              "keep": 0.32,
+              "uk": 0.02
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 609,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_nginx",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 215.0458749999995,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.27,
+            "probabilities": {
+              "abc": 0.44,
+              "keep": 0.51,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 622,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_frontend",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 224.89683300000075,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.27,
+            "probabilities": {
+              "abc": 0.43,
+              "keep": 0.51,
+              "uk": 0.06
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 621,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_webhook",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 209.14933400000103,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.55,
+            "probabilities": {
+              "abc": 0.7,
+              "keep": 0.23,
+              "uk": 0.07
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 653,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_microservices",
+      "reversed_options": false,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 222.61050000000006,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.02,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 603,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "code_identifier",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 219.41433300000136,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.02,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 649,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "mail",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 222.0123340000004,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.02,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 652,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "native_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 220.35345799999817,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.89,
+            "probabilities": {
+              "keep": 0.93,
+              "ru": 0.06,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "prefix_acco",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 221.54308400000033,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.95,
+            "probabilities": {
+              "keep": 0.97,
+              "ru": 0.02,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 589,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "prefix_brow",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 202.91008299999902,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 1.0,
+            "probabilities": {
+              "keep": 1.0,
+              "ru": 0.0,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "prefix_info",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 208.57462500000068,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.91,
+            "probabilities": {
+              "keep": 0.06,
+              "ru": 0.9400000000000001,
+              "uk": 0.0
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 602,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "live_ru",
+      "reversed_options": false,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 222.13929200000138,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.88,
+            "probabilities": {
+              "abc": 0.01,
+              "keep": 0.92,
+              "uk": 0.07
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 596,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "live_hello",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 235.16220900000206,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "keep": 0.98,
+              "ru": 0.01,
+              "uk": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "prefix_hell",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 213.0659159999979,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.34,
+            "probabilities": {
+              "uk": 0.38,
+              "ru": 0.56,
+              "keep": 0.06
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "pronoun_ru",
+      "reversed_options": true,
+      "choice": "ru",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 229.9667499999991,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "ru",
+            "confidence": 0.64,
+            "probabilities": {
+              "uk": 0.19,
+              "ru": 0.76,
+              "keep": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "pronoun_uk",
+      "reversed_options": true,
+      "choice": "ru",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 256.3638329999982,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.79,
+            "probabilities": {
+              "abc": 0.09,
+              "keep": 0.86,
+              "uk": 0.05
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 660,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "live_domain",
+      "reversed_options": false,
+      "choice": "keep",
+      "correct": false
+    },
+    {
+      "status": 200,
+      "ms": 211.8432499999976,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.83,
+            "probabilities": {
+              "uk": 0.03,
+              "ru": 0.08,
+              "keep": 0.89
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "pronoun_ambiguous",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 215.39291699999907,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.94,
+            "probabilities": {
+              "uk": 0.01,
+              "ru": 0.03,
+              "keep": 0.96
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 574,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "single_ambiguous",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 225.61699999999973,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.55,
+            "probabilities": {
+              "ru": 0.29,
+              "keep": 0.7,
+              "abc": 0.01
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 594,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "native_uk_collision",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 227.45254200000176,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.97,
+            "probabilities": {
+              "uk": 0.01,
+              "ru": 0.01,
+              "keep": 0.98
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 582,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "preserve_API",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 215.15929199999917,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "abc",
+            "confidence": 0.51,
+            "probabilities": {
+              "uk": 0.1,
+              "keep": 0.23,
+              "abc": 0.67
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 636,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "unknown_Kubernetes",
+      "reversed_options": true,
+      "choice": "abc",
+      "correct": true
+    },
+    {
+      "status": 200,
+      "ms": 204.3113329999997,
+      "cold_connection": false,
+      "response": {
+        "model": "jev-1.14.0",
+        "answers": {
+          "decision": {
+            "type": "choice",
+            "choice": "keep",
+            "confidence": 0.92,
+            "probabilities": {
+              "uk": 0.03,
+              "ru": 0.02,
+              "keep": 0.95
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 586,
+          "output_tokens": 38
+        }
+      },
+      "model_requested": "jev-1.14.0",
+      "case_id": "prefix_acco",
+      "reversed_options": true,
+      "choice": "keep",
+      "correct": true
+    }
+  ],
+  "notes": "Synthetic hand-selected cases; small convenience sample; no production traffic; credentials not recorded."
+}

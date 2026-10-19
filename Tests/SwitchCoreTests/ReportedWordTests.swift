@@ -19,7 +19,7 @@ final class ReportedWordTests: XCTestCase {
     }
 
     func testCurrencySignAfterWordStays() throws {
-        // Shift-4 after nsc means тыс$; the Russian layout alone would make it тыс%.
+        // Shift-4 after a word means $, as typed; the Russian layout alone would make it %.
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
         func decide(_ text: String, typing: Bool = false) -> String? {
             let request = CorrectionRequest(text: text, source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
@@ -27,7 +27,10 @@ final class ReportedWordTests: XCTestCase {
             guard detector.mayCorrect(request) else { return nil }
             return detector.correction(request, context: "")?.replacement
         }
-        XCTAssertEqual(decide("nsc$"), "тыс$")
+        // тыс is too rare a three-letter word to switch by itself; Shift does it, keeping the sign.
+        XCTAssertNil(decide("nsc$"))
+        XCTAssertEqual(detector.convertManually("nsc$", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id)?.replacement,
+                       "тыс$")
         XCTAssertEqual(decide("ghbdtn$"), "привет$")
         XCTAssertEqual(decide("ghbdtn$", typing: true), "привет$")
         XCTAssertEqual(decide("ghbdtn€"), "привет€")

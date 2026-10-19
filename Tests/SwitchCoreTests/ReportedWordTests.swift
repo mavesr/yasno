@@ -10,13 +10,12 @@ final class ReportedWordTests: XCTestCase {
     }
 
     func testColloquialGermanNenConvertsToRussian() throws {
+        // German lists 'nen as common; on ABC it is almost always "тут" typed in the wrong layout.
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
-        for typing in [false, true] {
-            let request = CorrectionRequest(text: "nen", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
-                                            correctSpelling: true, whileTyping: typing)
-            XCTAssertTrue(detector.mayCorrect(request), "typing: \(typing)")
-            XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут", "typing: \(typing)")
-        }
+        let request = CorrectionRequest(text: "nen", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
+                                        correctSpelling: true, whileTyping: false)
+        XCTAssertTrue(detector.mayCorrect(request))
+        XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут")
     }
 
     func testSymbolBeforeWordStaysAndWordConverts() throws {

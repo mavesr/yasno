@@ -12,7 +12,7 @@ final class ReportedWordTests: XCTestCase {
     func testColloquialGermanNenConvertsToRussian() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
         for typing in [false, true] {
-            let request = CorrectionRequest(text: "nen", source: abc, layouts: [abc, ru, uk], preferredTargetID: nil,
+            let request = CorrectionRequest(text: "nen", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
                                             correctSpelling: true, whileTyping: typing)
             XCTAssertTrue(detector.mayCorrect(request), "typing: \(typing)")
             XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут", "typing: \(typing)")

@@ -4,7 +4,7 @@
 # field with keystrokes only (see AccessibleEditor.blind). The DMG keeps the full behaviour.
 #
 # Required: YASNO_APPSTORE_PROFILE — a Mac App Store provisioning profile for the bundle ID.
-# Optional: YASNO_APPSTORE_BUNDLE_ID (com.mavesr.yasno), YASNO_APP_IDENTITY (the single
+# Optional: YASNO_APPSTORE_BUILD (build number override), YASNO_APPSTORE_BUNDLE_ID (com.mavesr.yasno), YASNO_APP_IDENTITY (the single
 # "Apple Distribution" identity), YASNO_INSTALLER_IDENTITY (the single installer identity).
 # Upload: YASNO_ASC_KEY_ID and YASNO_ASC_ISSUER with AuthKey_<id>.p8 in ~/.appstoreconnect/private_keys.
 set -euo pipefail
@@ -46,6 +46,10 @@ YASNO_PLIST="$YASNO_APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $YASNO_BUNDLE_ID" "$YASNO_PLIST"
 /usr/libexec/PlistBuddy -c 'Add :LSApplicationCategoryType string public.app-category.productivity' "$YASNO_PLIST"
 /usr/libexec/PlistBuddy -c 'Add :ITSAppUsesNonExemptEncryption bool false' "$YASNO_PLIST"
+# App Store Connect needs a new build number for every upload of the same version.
+if [[ -n "${YASNO_APPSTORE_BUILD:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $YASNO_APPSTORE_BUILD" "$YASNO_PLIST"
+fi
 
 security cms -D -i "$YASNO_PROFILE" > "$YASNO_WORK/profile.plist"
 YASNO_TEAM="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$YASNO_WORK/profile.plist")"

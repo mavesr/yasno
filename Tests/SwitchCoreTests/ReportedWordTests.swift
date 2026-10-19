@@ -27,8 +27,8 @@ final class ReportedWordTests: XCTestCase {
             guard detector.mayCorrect(request) else { return nil }
             return detector.correction(request, context: "")?.replacement
         }
-        // тыс is too rare a three-letter word to switch by itself; Shift does it, keeping the sign.
-        XCTAssertNil(decide("nsc$"))
+        XCTAssertEqual(decide("nsc"), "тыс")
+        XCTAssertEqual(decide("nsc$"), "тыс$")
         XCTAssertEqual(detector.convertManually("nsc$", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id)?.replacement,
                        "тыс$")
         XCTAssertEqual(decide("ghbdtn$"), "привет$")

@@ -53,5 +53,46 @@ final class SystemLexiconTests: XCTestCase {
         let abc = try layout("ABC"), ru = try layout("Russian")
         XCTAssertNil(detector.suggest("D", source: abc, layouts: [abc, ru], context: "The report was written by "))
         XCTAssertEqual(detector.suggest("d", source: abc, layouts: [abc, ru], preferredTargetID: ru.id)?.replacement, "в")
+        // Lowercase letters are not initials: a Latin word earlier in the sentence does not keep them.
+        for (typed, expected) in [("b", "и"), ("z", "я"), ("f", "а")] {
+            XCTAssertEqual(detector.suggest(typed, source: abc, layouts: [abc, ru], preferredTargetID: ru.id,
+                                            context: "Открой app ")?.replacement, expected, typed)
+        }
+    }
+
+    func testSlipLikelihoodToleratesGuessesTwoEditsAway() throws {
+        // Spelling-service guesses can differ by more than one letter; scoring one crashed the full run.
+        let ru = try layout("Russian")
+        XCTAssertEqual(Detector.slipLikelihood(typed: "качгулллся", intended: "качнулся", layout: ru), 0)
+        XCTAssertEqual(Detector.slipLikelihood(typed: "качнулся", intended: "качнуллсяя", layout: ru), 0)
+    }
+
+    func testShortAndRareWordsAreRepaired() throws {
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let layouts = [abc, ru, uk]
+        // Three- and four-letter words make up most missed slips in real sentences.
+        for (typed, expected) in [("тчо", "что"), ("тэо", "это"), ("дял", "для"), ("hte", "the")] {
+            let source = typed.first!.isASCII ? abc : ru
+            XCTAssertEqual(detector.suggestCompleted(typed, source: source, layouts: layouts, correctSpelling: true)?.replacement,
+                           expected, typed)
+        }
+        // Long inflections missing from the frequency list come from the spelling service.
+        for (typed, expected) in [("забтлеваниях", "заболеваниях"), ("качгулся", "качнулся"), ("дрейфеут", "дрейфует")] {
+            XCTAssertEqual(detector.suggestCompleted(typed, source: ru, layouts: layouts, correctSpelling: true)?.replacement,
+                           expected, typed)
+        }
+        // A lowercase name or rare valid form is not respelled.
+        XCTAssertNil(detector.suggestCompleted("кошмарит", source: ru, layouts: layouts, correctSpelling: true))
+        // Names in lowercase (the service offers them capitalized) and loanwords with a
+        // doubled letter the service lacks keep their spelling.
+        for (word, source) in [("донбассе", ru), ("голливудском", ru), ("сергій", uk)] {
+            XCTAssertNil(detector.suggestCompleted(word, source: source, layouts: layouts, correctSpelling: true), word)
+        }
+    }
+
+    func testShortTechWordsConvertFromThreeKeys() throws {
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        XCTAssertEqual(detector.suggest("шщы", source: ru, layouts: [abc, ru, uk])?.replacement, "ios")
+        XCTAssertEqual(detector.suggest("фзз", source: ru, layouts: [abc, ru, uk])?.replacement, "app")
     }
 }

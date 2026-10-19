@@ -47,11 +47,18 @@ public final class Detector {
                 }
             }
             // Small, authored additions cover everyday vocabulary missing from subtitles.
+            // A line may give a rank: short tech words (ios, app) must rank as common to
+            // convert from three keys, where rarer matches are mostly accidents.
             if let url = Bundle.module.url(forResource: language.rawValue + "-supplemental", withExtension: "txt", subdirectory: "Resources"),
                let text = try? String(contentsOf: url, encoding: .utf8) {
-                for word in text.split(whereSeparator: \.isWhitespace).map(String.init)
-                    where Self.hasNativeLetters(word, language: language) && words[word] == nil {
-                    words[word] = 10_000
+                for line in text.split(separator: "\n") {
+                    let fields = line.split(separator: " ")
+                    guard let first = fields.first else { continue }
+                    let word = String(first)
+                    guard Self.hasNativeLetters(word, language: language) else { continue }
+                    if let authored = fields.dropFirst().first.flatMap({ Int($0) }) {
+                        words[word] = min(words[word] ?? .max, authored)
+                    } else if words[word] == nil { words[word] = 10_000 }
                 }
             }
             ranks[language] = words
@@ -583,7 +590,9 @@ public final class Detector {
             return Suggestion(original: word, replacement: output, target: target, score: 1)
         }
         // An initial inside English text (D, P) stays when the context is the source language.
-        if !candidates.isEmpty, contextPreference(context, targets: [source] + candidates.map(\.target)) == source.id { return nil }
+        // Lowercase b, z, f are not words there either: they are и, я, а typed in the wrong layout.
+        if word.first?.isUppercase == true, !candidates.isEmpty,
+           contextPreference(context, targets: [source] + candidates.map(\.target)) == source.id { return nil }
         let preference = contextualPreference(context, candidates: candidates) ?? preferredTargetID
         if let preferred = candidates.first(where: { $0.target.id == preference }) { return preferred }
         return candidates.count == 1 ? candidates.first : nil

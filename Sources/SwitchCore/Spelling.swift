@@ -59,7 +59,7 @@ extension Detector {
         let (rawCore, suffix) = WordText.coreAndSuffix(word)
         let core = WordText.canonical(rawCore)
         let letters = core.filter(\.isLetter)
-        guard (5...32).contains(core.count), !letters.isEmpty,
+        guard (3...32).contains(core.count), !letters.isEmpty,
               core.allSatisfy({ $0.isLetter || ",.;:'[]\\`".contains($0) }),
               letters != letters.uppercased(), !letters.dropFirst().contains(where: \.isUppercase),
               !WebAddress.recognizes(word) else { return nil }
@@ -108,6 +108,25 @@ extension Detector {
         // Merge identical RU/UK output for probability comparison, retaining the chosen
         // layout only when context / explicit preference can resolve that ambiguity.
         candidates.sort { $0.rank == $1.rank ? ($0.text, $0.target.id) < ($1.text, $1.target.id) : $0.rank < $1.rank }
+        // Most long Russian and Ukrainian words a slip lands near are inflections the 50k
+        // list lacks (Вселенной, коробкой). The spelling service knows them: accept its
+        // guess when it is the only one, one natural slip away, and the word is lowercase
+        // (capitals are names: Балеевой, Анатолій). German is left out: the service
+        // flags every lowercase noun there.
+        if candidates.isEmpty, sourceCyrillic, core.count >= 6, core.first?.isUppercase != true,
+           !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) {
+            let typed = WordText.canonical(rawCore.lowercased())
+            let guesses = Set(source.languages.flatMap { SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) })
+            // A doubled letter is left alone here: loanwords the service lacks keep theirs
+            // (голливудском), so dropping one is a guess the scenario runs showed often wrong.
+            if guesses.count == 1, let guess = guesses.first, !ignored.contains(guess),
+               !Self.dropsDoubledLetter(typed: typed, intended: guess),
+               Self.slipLikelihood(typed: typed, intended: guess, layout: source) >= 0.5 {
+                let style = rawCore.first(where: { WordText.apostrophes.contains($0) }).map(String.init) ?? source.apostropheGlyph
+                return Suggestion(original: word, replacement: guess.replacingOccurrences(of: "'", with: style) + suffix,
+                                  target: source, score: 0.2)
+            }
+        }
         guard let best = candidates.first,
               !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) else { return nil }
         // Frequency is not proof of intent: even a rare alternative can be the
@@ -128,8 +147,9 @@ extension Detector {
             }
         }
         // A rarer word (приобррел → приобрел) needs the spelling service to agree that it
-        // is the only close word. Scenario runs showed that letting the service propose
-        // words itself, or veto on its rare suggestions, costs more than it gains.
+        // is the only close word. Scenario runs showed that vetoing on the service's rare
+        // suggestions, or letting it propose words beyond the narrow case above, costs
+        // more than it gains.
         if best.rank > 20_000 {
             guard best.rank <= 50_000, core.count >= 6, best.target.id == source.id,
                   source.languages.contains(where: {
@@ -175,11 +195,22 @@ extension Detector {
         return x.indices.allSatisfy { x[$0] == y[$0] || cognateLetters.contains([x[$0], y[$0]]) }
     }
 
+    /// `intended` is `typed` with one of two equal neighbouring letters removed.
+    static func dropsDoubledLetter(typed: String, intended: String) -> Bool {
+        let t = Array(typed), w = Array(intended)
+        guard t.count == w.count + 1 else { return false }
+        var i = 0
+        while i < w.count, t[i] == w[i] { i += 1 }
+        return (i > 0 && t[i - 1] == t[i]) || (i + 1 < t.count && t[i + 1] == t[i])
+    }
+
     /// Relative likelihood that `typed` came from `intended` by one slip, on this layout.
     /// Neighbouring keys, doubled and dropped double letters and swaps are common;
     /// a substitution or insertion far across the keyboard is not.
+    /// Words further apart than one edit (spelling-service guesses can be) are no slip.
     static func slipLikelihood(typed: String, intended: String, layout: KeyboardLayout) -> Double {
         let t = Array(typed), w = Array(intended)
+        guard abs(t.count - w.count) <= 1 else { return 0 }
         func near(_ a: Character, _ b: Character) -> Bool {
             guard let x = layout.key(for: a), let y = layout.key(for: b) else { return false }
             return KeyboardGeometry.areNeighbours(x, y)

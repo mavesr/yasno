@@ -49,12 +49,16 @@ public final class Detector {
             // Small, authored additions cover everyday vocabulary missing from subtitles.
             // A line may give a rank: short tech words (ios, app) must rank as common to
             // convert from three keys, where rarer matches are mostly accidents.
+            // Supplemental lines load after the base list, so a removal applies to it.
             if let url = Bundle.module.url(forResource: language.rawValue + "-supplemental", withExtension: "txt", subdirectory: "Resources"),
                let text = try? String(contentsOf: url, encoding: .utf8) {
                 for line in text.split(separator: "\n") {
                     let fields = line.split(separator: " ")
                     guard let first = fields.first else { continue }
                     let word = String(first)
+                    // "-word" drops a listed word that is mostly typed by accident
+                    // in another layout: German 'nen is "тут" typed on ABC.
+                    if word.hasPrefix("-") { words.removeValue(forKey: String(word.dropFirst())); continue }
                     guard Self.hasNativeLetters(word, language: language) else { continue }
                     if let authored = fields.dropFirst().first.flatMap({ Int($0) }) {
                         words[word] = min(words[word] ?? .max, authored)

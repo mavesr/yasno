@@ -9,6 +9,15 @@ final class ReportedWordTests: XCTestCase {
         try XCTUnwrap(layouts.first { $0.id == "com.apple.keylayout." + suffix })
     }
 
+    func testColloquialGermanNenConvertsToRussian() throws {
+        // German lists 'nen as common; on ABC it is almost always "тут" typed in the wrong layout.
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let request = CorrectionRequest(text: "nen", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
+                                        correctSpelling: true, whileTyping: false)
+        XCTAssertTrue(detector.mayCorrect(request))
+        XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут")
+    }
+
     func testSymbolBeforeWordStaysAndWordConverts() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian"), de = try layout("German")
         let active = [abc, ru, uk]

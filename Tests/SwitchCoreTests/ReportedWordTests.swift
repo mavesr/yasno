@@ -9,6 +9,16 @@ final class ReportedWordTests: XCTestCase {
         try XCTUnwrap(layouts.first { $0.id == "com.apple.keylayout." + suffix })
     }
 
+    func testColloquialGermanNenConvertsToRussian() throws {
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        for typing in [false, true] {
+            let request = CorrectionRequest(text: "nen", source: abc, layouts: [abc, ru, uk], preferredTargetID: nil,
+                                            correctSpelling: true, whileTyping: typing)
+            XCTAssertTrue(detector.mayCorrect(request), "typing: \(typing)")
+            XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут", "typing: \(typing)")
+        }
+    }
+
     func testSymbolBeforeWordStaysAndWordConverts() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian"), de = try layout("German")
         let active = [abc, ru, uk]

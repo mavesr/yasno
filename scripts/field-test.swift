@@ -86,6 +86,7 @@ if focusSpec != "focused" {
     Thread.sleep(forTimeInterval: 0.3)
 }
 guard let field = element(attribute(ax, kAXFocusedUIElementAttribute)) else { fail("No focused field") }
+fputs("field: \(attribute(field, kAXRoleAttribute) as? String ?? "?") \(attribute(field, "AXDOMIdentifier") as? String ?? "")\n", stderr)
 
 let source = CGEventSource(stateID: .privateState)!
 func post(_ key: CGKeyCode, down: Bool, flags: CGEventFlags = []) {

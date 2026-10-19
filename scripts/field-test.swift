@@ -161,13 +161,27 @@ func normalize(_ text: String) -> String {
     text.replacingOccurrences(of: "\u{00a0}", with: " ").replacingOccurrences(of: "\u{200b}", with: "")
         .trimmingCharacters(in: .newlines)
 }
+/// Edit-menu command by its ⌘ key. Chrome may ignore synthesized ⌘ shortcuts; the menu works.
+func menuCommand(_ character: String) {
+    var queue = element(attribute(ax, kAXMenuBarAttribute)).map { [$0] } ?? [], visited = 0
+    while !queue.isEmpty, visited < 3_000 {
+        let item = queue.removeFirst(); visited += 1
+        if attribute(item, "AXMenuItemCmdChar") as? String == character,
+           (attribute(item, "AXMenuItemCmdModifiers") as? Int) == 0,
+           attribute(item, kAXEnabledAttribute) as? Bool != false {
+            AXUIElementPerformAction(item, kAXPressAction as CFString); return
+        }
+        queue += (attribute(item, kAXChildrenAttribute) as? [AXUIElement]) ?? []
+    }
+    press(character == "A" ? 0 : 8, flags: .maskCommand)
+}
 func readField() -> String {
     if let text = axText() { return normalize(text) }
     pasteboard.clearContents()
     let before = pasteboard.changeCount
-    press(0, flags: .maskCommand)
+    menuCommand("A")
     Thread.sleep(forTimeInterval: 0.25)
-    press(8, flags: .maskCommand)
+    menuCommand("C")
     let deadline = Date().addingTimeInterval(1.5)
     while pasteboard.changeCount == before, Date() < deadline { Thread.sleep(forTimeInterval: 0.03) }
     let text = pasteboard.string(forType: .string) ?? ""
@@ -182,7 +196,7 @@ func clearField() {
         AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString, AXValueCreate(.cfRange, &range)!)
         Thread.sleep(forTimeInterval: 0.15)
     } else {
-        press(0, flags: .maskCommand)
+        menuCommand("A")
         Thread.sleep(forTimeInterval: 0.25)
     }
     press(51)

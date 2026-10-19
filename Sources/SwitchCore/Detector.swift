@@ -268,16 +268,6 @@ public final class Detector {
                  ignored: Set<String> = [], manual: Bool = false,
                  preferredTargetID: String? = nil, context: String = "", live: Bool) -> Suggestion? {
         guard !ignored.contains(word.lowercased()) else { return nil }
-        // Symbols before a word (/вумудщзук → /developer, «руддщ → «hello) stay as typed and
-        // the word after them is judged alone, unless another layout puts a letter on that key.
-        let prefix = String(word.prefix(while: WordText.prefixPunctuation.contains))
-        if !prefix.isEmpty, prefix.count < word.count,
-           layouts.allSatisfy({ $0.id == source.id || source.convert(prefix, to: $0)?.contains(where: \.isLetter) != true }) {
-            guard let inner = suggest(String(word.dropFirst(prefix.count)), source: source, layouts: layouts,
-                                      ignored: ignored, manual: manual, preferredTargetID: preferredTargetID,
-                                      context: context, live: live) else { return nil }
-            return Suggestion(original: word, replacement: prefix + inner.replacement, target: inner.target, score: inner.score)
-        }
         if rank(word, languages: source.languages) == nil,
            let address = suggestAddress(word, source: source, layouts: layouts),
            manual || !isValidNativeText(word, source: source) { return address }

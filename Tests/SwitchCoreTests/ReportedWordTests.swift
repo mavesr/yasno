@@ -10,21 +10,29 @@ final class ReportedWordTests: XCTestCase {
     }
 
     func testSymbolBeforeWordStaysAndWordConverts() throws {
-        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian"), de = try layout("German")
         let active = [abc, ru, uk]
-        for (input, expected, source, target) in [("/вумудщзук", "/developer", ru, abc),
-                                                 ("«руддщ", "«hello", ru, abc),
-                                                 ("(ghbdtn", "(привет", abc, ru),
-                                                 ("#ghbdtn", "#привет", abc, ru)] {
-            XCTAssertTrue(detector.maySuggest(input, source: source, layouts: active), input)
-            XCTAssertEqual(detector.suggest(input, source: source, layouts: active,
-                preferredTargetID: target.id)?.replacement, expected)
+        func decide(_ text: String, _ source: KeyboardLayout, _ layouts: [KeyboardLayout], typing: Bool = false) -> String? {
+            let request = CorrectionRequest(text: text, source: source, layouts: layouts, preferredTargetID: nil,
+                                            correctSpelling: true, whileTyping: typing)
+            guard detector.mayCorrect(request) else { return nil }
+            return detector.correction(request, context: "")?.replacement
+        }
+        for (input, expected, source) in [("/вумудщзук", "/developer", ru), ("«руддщ", "«hello", ru),
+                                          ("(ghbdtn", "(привет", abc), ("#ghbdtn", "#привет", abc)] {
+            XCTAssertEqual(decide(input, source, active), expected, input)
         }
         // A key that is a letter in another layout belongs to the word: [jxe → хочу.
-        XCTAssertEqual(detector.suggest("[jxe", source: abc, layouts: active, preferredTargetID: ru.id)?.replacement, "хочу")
-        for valid in ["/developer", "(привет", "«hello"] {
+        XCTAssertEqual(decide("[jxe", abc, active), "хочу")
+        // Correct words after a symbol stay, also while they are still being typed.
+        for valid in ["(даже", "(даж", "/developer", "«hello"] {
             let source = valid.contains(where: { ("а"..."я").contains(String($0)) }) ? ru : abc
-            XCTAssertNil(detector.suggest(valid, source: source, layouts: active), valid)
+            XCTAssertNil(decide(valid, source, active, typing: true), valid)
+            XCTAssertNil(decide(valid, source, active), valid)
+        }
+        for valid in ["\"Verfass", "\"Verfassung\".", "(Abk."] {
+            XCTAssertNil(decide(valid, de, [de, ru], typing: true), valid)
+            XCTAssertNil(decide(valid, de, [de, ru]), valid)
         }
     }
 

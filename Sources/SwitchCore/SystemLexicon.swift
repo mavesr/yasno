@@ -68,7 +68,10 @@ public final class SystemLexicon {
         serviceLock.unlock()
         let lower = WordText.canonical(word.lowercased())
         var guesses: [String] = []
-        for guess in raw {
+        // The service suggesting the word itself in capitals (донбассе → Донбассе, сергій →
+        // Сергій) means it is a name typed in lowercase, not a slip.
+        let isName = raw.contains { WordText.canonical($0.lowercased()) == lower }
+        for guess in raw where !isName {
             let candidate = WordText.canonical(guess.lowercased())
             if WordText.isOneEdit(lower, candidate), !guesses.contains(candidate) { guesses.append(candidate) }
         }

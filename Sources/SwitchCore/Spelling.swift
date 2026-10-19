@@ -117,7 +117,10 @@ extension Detector {
            !SystemLexicon.shared.knows(rawCore, languages: sameAlphabet) {
             let typed = WordText.canonical(rawCore.lowercased())
             let guesses = Set(source.languages.flatMap { SystemLexicon.shared.oneEditGuesses(rawCore, language: $0) })
+            // A doubled letter is left alone here: loanwords the service lacks keep theirs
+            // (голливудском), so dropping one is a guess the scenario runs showed often wrong.
             if guesses.count == 1, let guess = guesses.first, !ignored.contains(guess),
+               !Self.dropsDoubledLetter(typed: typed, intended: guess),
                Self.slipLikelihood(typed: typed, intended: guess, layout: source) >= 0.5 {
                 let style = rawCore.first(where: { WordText.apostrophes.contains($0) }).map(String.init) ?? source.apostropheGlyph
                 return Suggestion(original: word, replacement: guess.replacingOccurrences(of: "'", with: style) + suffix,
@@ -190,6 +193,15 @@ extension Detector {
         let x = Array(a), y = Array(b)
         guard x.count == y.count, x != y else { return false }
         return x.indices.allSatisfy { x[$0] == y[$0] || cognateLetters.contains([x[$0], y[$0]]) }
+    }
+
+    /// `intended` is `typed` with one of two equal neighbouring letters removed.
+    static func dropsDoubledLetter(typed: String, intended: String) -> Bool {
+        let t = Array(typed), w = Array(intended)
+        guard t.count == w.count + 1 else { return false }
+        var i = 0
+        while i < w.count, t[i] == w[i] { i += 1 }
+        return (i > 0 && t[i - 1] == t[i]) || (i + 1 < t.count && t[i + 1] == t[i])
     }
 
     /// Relative likelihood that `typed` came from `intended` by one slip, on this layout.

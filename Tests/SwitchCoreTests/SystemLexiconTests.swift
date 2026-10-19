@@ -83,6 +83,11 @@ final class SystemLexiconTests: XCTestCase {
         }
         // A lowercase name or rare valid form is not respelled.
         XCTAssertNil(detector.suggestCompleted("кошмарит", source: ru, layouts: layouts, correctSpelling: true))
+        // Names in lowercase (the service offers them capitalized) and loanwords with a
+        // doubled letter the service lacks keep their spelling.
+        for (word, source) in [("донбассе", ru), ("голливудском", ru), ("сергій", uk)] {
+            XCTAssertNil(detector.suggestCompleted(word, source: source, layouts: layouts, correctSpelling: true), word)
+        }
     }
 
     func testShortTechWordsConvertFromThreeKeys() throws {

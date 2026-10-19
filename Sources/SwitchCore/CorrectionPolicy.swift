@@ -20,12 +20,29 @@ public struct CorrectionRequest {
         self.preferredTargetID = preferredTargetID; self.correctSpelling = correctSpelling
         self.whileTyping = whileTyping; self.liveConverted = liveConverted
     }
+
+    func with(text: String) -> CorrectionRequest {
+        CorrectionRequest(text: text, source: source, layouts: layouts, ignored: ignored, preferredTargetID: preferredTargetID,
+                          correctSpelling: correctSpelling, whileTyping: whileTyping, liveConverted: liveConverted)
+    }
+
+    /// Symbols before a word (/вумудщзук → /developer, «руддщ → «hello) stay as typed and the
+    /// word after them is judged alone, exactly as if typed after a space. Not when another
+    /// layout puts a letter on that key: [jxe is хочу.
+    var openingSymbols: String? {
+        let prefix = String(text.prefix(while: WordText.prefixPunctuation.contains))
+        guard !prefix.isEmpty, prefix.count < text.count,
+              layouts.allSatisfy({ $0.id == source.id || source.convert(prefix, to: $0)?.contains(where: \.isLetter) != true })
+        else { return nil }
+        return prefix
+    }
 }
 
 extension Detector {
     /// Checked before input is held and before any Accessibility work. False means
     /// no correction can follow, whatever the surrounding text turns out to be.
     public func mayCorrect(_ request: CorrectionRequest) -> Bool {
+        if let prefix = request.openingSymbols { return mayCorrect(request.with(text: String(request.text.dropFirst(prefix.count)))) }
         if request.liveConverted {
             // A live-converted word only gets a spelling pass, once it is complete.
             guard !request.whileTyping, request.correctSpelling else { return false }
@@ -41,6 +58,11 @@ extension Detector {
 
     /// The replacement for the word, given up to 256 characters typed before it.
     public func correction(_ request: CorrectionRequest, context: String) -> Suggestion? {
+        if let prefix = request.openingSymbols {
+            return correction(request.with(text: String(request.text.dropFirst(prefix.count))), context: context + prefix).map {
+                Suggestion(original: request.text, replacement: prefix + $0.replacement, target: $0.target, score: $0.score)
+            }
+        }
         if request.liveConverted {
             guard !request.whileTyping, request.correctSpelling else { return nil }
             return suggestSpelling(request.text, source: request.source, layouts: request.layouts,

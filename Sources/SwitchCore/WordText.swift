@@ -6,6 +6,8 @@ enum WordText {
     /// Symbols that open a word (/команда, «цитата, #тег) without being part of it.
     static let prefixPunctuation = Set("/\\([{«\"„“‘'*#-")
     static let apostrophes = Set("'’ʼ‘")
+    /// Currency signs after a word (тыс$) are meant as typed: no layout puts them elsewhere.
+    static let closingSymbols = Set("$€£₽¥¢")
 
     static func canonical(_ text: String) -> String {
         guard text.contains(where: { $0 != "'" && apostrophes.contains($0) }) else { return text }

@@ -186,8 +186,9 @@ public final class Detector {
             if let full, rank(full, languages: target.languages) != nil { return full }
             var core = input
             // Strip only as much literal punctuation as needed. A preceding dot
-            // may still be the physical ю key (lzre.! → дякую!).
-            while let last = core.last, WordText.suffixPunctuation.contains(last) {
+            // may still be the physical ю key (lzre.! → дякую!). A currency sign is
+            // literal too: nsc$ → тыс$, not тыс%.
+            while let last = core.last, WordText.suffixPunctuation.contains(last) || WordText.closingSymbols.contains(last) {
                 core.removeLast()
                 if !core.isEmpty, let translated = source.convert(core, to: target),
                    rank(translated, languages: target.languages) != nil {

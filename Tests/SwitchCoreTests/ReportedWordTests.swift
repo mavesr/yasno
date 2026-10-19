@@ -18,6 +18,26 @@ final class ReportedWordTests: XCTestCase {
         XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут")
     }
 
+    func testCurrencySignAfterWordStays() throws {
+        // Shift-4 after a word means $, as typed; the Russian layout alone would make it %.
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        func decide(_ text: String, typing: Bool = false) -> String? {
+            let request = CorrectionRequest(text: text, source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
+                                            correctSpelling: true, whileTyping: typing)
+            guard detector.mayCorrect(request) else { return nil }
+            return detector.correction(request, context: "")?.replacement
+        }
+        XCTAssertEqual(decide("nsc"), "тыс")
+        XCTAssertEqual(decide("nsc$"), "тыс$")
+        XCTAssertEqual(detector.convertManually("nsc$", source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id)?.replacement,
+                       "тыс$")
+        XCTAssertEqual(decide("ghbdtn$"), "привет$")
+        XCTAssertEqual(decide("ghbdtn$", typing: true), "привет$")
+        XCTAssertEqual(decide("ghbdtn€"), "привет€")
+        XCTAssertNil(decide("cost$"))
+        XCTAssertNil(decide("$"))
+    }
+
     func testSymbolBeforeWordStaysAndWordConverts() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian"), de = try layout("German")
         let active = [abc, ru, uk]

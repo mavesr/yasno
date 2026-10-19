@@ -2,7 +2,7 @@
 // them. Only windows whose title contains the given marker are touched (the local field lab,
 // an unsaved TextEdit document, a Google document named «Ясно тест»). Never sends Return.
 //
-//   field-test <bundle id> <window title marker> <focus> [case…]
+//   field-test <bundle id | pid:N> <window title marker> <focus> [case…]
 //   focus: dom:<id> | class:<DOM class> | focused
 //
 // Fields are read through Accessibility; canvas editors (Google Docs) with Select All + Copy,
@@ -40,7 +40,8 @@ guard CGPreflightPostEventAccess() else { fail("No permission to post keyboard e
 
 // A just-launched application can be listed with pid -1 until the workspace catches up.
 func running() -> NSRunningApplication? {
-    NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleID && !$0.isTerminated && $0.processIdentifier > 0 }
+    if bundleID.hasPrefix("pid:"), let pid = pid_t(bundleID.dropFirst(4)) { return NSRunningApplication(processIdentifier: pid) }
+    return NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleID && !$0.isTerminated && $0.processIdentifier > 0 }
 }
 var launched = running()
 let launchDeadline = Date().addingTimeInterval(2)

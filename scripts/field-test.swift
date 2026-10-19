@@ -56,11 +56,14 @@ func element(_ value: CFTypeRef?) -> AXUIElement? {
     guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
     return unsafeBitCast(value, to: AXUIElement.self)
 }
-func windowTitle() -> String { element(attribute(ax, kAXFocusedWindowAttribute)).flatMap { attribute($0, kAXTitleAttribute) as? String } ?? "" }
+func frontWindow() -> AXUIElement? { element(attribute(ax, kAXFocusedWindowAttribute)) ?? element(attribute(ax, kAXMainWindowAttribute)) }
+func windowTitle() -> String { frontWindow().flatMap { attribute($0, kAXTitleAttribute) as? String } ?? "" }
+let titleDeadline = Date().addingTimeInterval(3)
+while !windowTitle().contains(marker), Date() < titleDeadline { Thread.sleep(forTimeInterval: 0.1) }
 guard windowTitle().contains(marker) else { fail("The front window is not a test window: \(windowTitle())") }
 
 func find(_ match: (AXUIElement) -> Bool) -> AXUIElement? {
-    guard let window = element(attribute(ax, kAXFocusedWindowAttribute)) else { return nil }
+    guard let window = frontWindow() else { return nil }
     var queue = [window], visited = 0
     while !queue.isEmpty, visited < 20_000 {
         let next = queue.removeFirst(); visited += 1

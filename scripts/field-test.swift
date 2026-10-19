@@ -38,7 +38,14 @@ let selected = arguments.count > 3 ? Array(arguments[3...]) : order
 guard selected.allSatisfy({ cases[$0] != nil }) else { fail("Unknown case") }
 guard CGPreflightPostEventAccess() else { fail("No permission to post keyboard events") }
 
-guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first(where: { !$0.isTerminated && $0.processIdentifier > 0 }) else { fail("\(bundleID) is not running") }
+// A just-launched application can be listed with pid -1 until the workspace catches up.
+func running() -> NSRunningApplication? {
+    NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == bundleID && !$0.isTerminated && $0.processIdentifier > 0 }
+}
+var launched = running()
+let launchDeadline = Date().addingTimeInterval(2)
+while launched == nil, Date() < launchDeadline { RunLoop.current.run(until: Date().addingTimeInterval(0.1)); launched = running() }
+guard let app = launched else { fail("\(bundleID) is not running") }
 app.activate(options: [.activateAllWindows])
 let activation = Date().addingTimeInterval(2)
 while NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier, Date() < activation {

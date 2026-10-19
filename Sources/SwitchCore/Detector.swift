@@ -287,7 +287,7 @@ public final class Detector {
         // Preserve valid words. For two-letter strings, a rare dictionary abbreviation
         // (e.g. English "ns") alone is not enough to defeat a common pronoun in context.
         let validLanguages = source.languages
-        let baseWord = WordText.coreAndSuffix(word).core
+        let baseWord = WordText.coreAndSymbols(word).core
         let sourceRank = [rank(word, languages: validLanguages), rank(baseWord, languages: validLanguages)].compactMap { $0 }.min()
         let short = baseWord.count == 2
         // A recognized full word is evidence of deliberate native input, even when
@@ -309,8 +309,9 @@ public final class Detector {
             // Judge the word without punctuation the target layout puts at its end: the Mac
             // Russian layout types , and . with Shift-6/7, which ABC renders as ^ and &.
             // Literal punctuation typed in the source (ымёя, → імʼя,) stays literal; the
-            // fallback below keeps it as typed.
-            let (convertedCore, convertedSuffix) = WordText.coreAndSuffix(converted)
+            // fallback below keeps it as typed. Other symbols follow the key, like the
+            // letters: nsc$ is тыс% in the Russian layout.
+            let (convertedCore, convertedSuffix) = WordText.coreAndSymbols(converted)
             let typedSymbols = !convertedSuffix.isEmpty &&
                 !word.suffix(convertedSuffix.count).contains(where: WordText.suffixPunctuation.contains)
             let dictionaryRank = rank(converted, languages: target.languages)

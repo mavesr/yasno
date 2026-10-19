@@ -22,6 +22,13 @@ enum WordText {
         return (String(text[..<end]), String(text[end...]))
     }
 
+    /// Splits off every trailing symbol, not only sentence punctuation: тыс% or тыс$
+    /// typed straight after a word end the word, as a space would.
+    static func coreAndSymbols(_ text: String) -> (core: String, suffix: String) {
+        let count = text.reversed().prefix { !$0.isLetter && !$0.isNumber }.count
+        return (String(text.dropLast(count)), String(text.suffix(count)))
+    }
+
     static func isOrthographicWord(_ text: String) -> Bool {
         let chars = Array(text)
         guard !chars.isEmpty else { return false }

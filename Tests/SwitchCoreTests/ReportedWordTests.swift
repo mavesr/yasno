@@ -18,6 +18,25 @@ final class ReportedWordTests: XCTestCase {
         XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут")
     }
 
+    func testSymbolAfterWordFollowsTheKey() throws {
+        // A symbol typed straight after the word belongs to the same wrong layout: Shift-4
+        // after nsc is тыс% in Russian, not тыс$.
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        func decide(_ text: String) -> String? {
+            let request = CorrectionRequest(text: text, source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
+                                            correctSpelling: true, whileTyping: false)
+            guard detector.mayCorrect(request) else { return nil }
+            return detector.correction(request, context: "")?.replacement
+        }
+        for (typed, word) in [("nsc$", "тыс"), ("ghbdtn%", "привет"), ("ghbdtn*", "привет")] {
+            let symbol = try XCTUnwrap(abc.convert(String(typed.last!), to: ru))
+            XCTAssertNotEqual(symbol, String(typed.last!), typed)
+            XCTAssertEqual(decide(typed), word + symbol, typed)
+        }
+        // Real words keep their symbol.
+        for valid in ["cost$", "hello%", "test*"] { XCTAssertNil(decide(valid), valid) }
+    }
+
     func testSymbolBeforeWordStaysAndWordConverts() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian"), de = try layout("German")
         let active = [abc, ru, uk]

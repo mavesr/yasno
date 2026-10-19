@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Ясно — поля ввода</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css">
+<style>
+  body { font: 15px -apple-system, sans-serif; margin: 24px; max-width: 760px; }
+  label { display: block; margin: 14px 0 4px; color: #555; }
+  input, textarea, [contenteditable], .editor { width: 100%; box-sizing: border-box; font: inherit; padding: 6px; border: 1px solid #aaa; border-radius: 4px; }
+  textarea, [contenteditable], .editor { min-height: 44px; }
+  iframe { width: 100%; height: 60px; border: 1px solid #aaa; border-radius: 4px; }
+  #quill { height: 60px; }
+  #monaco { height: 60px; border: 1px solid #aaa; }
+</style>
+</head>
+<body>
+<h1>Ясно — поля ввода</h1>
+<p>Локальный стенд: здесь ничего не отправляется. Каждое поле проверяется отдельно.</p>
+
+<label for="text">input type=text</label><input id="text" type="text" spellcheck="false" autocomplete="off">
+<label for="search">input type=search</label><input id="search" type="search" spellcheck="false" autocomplete="off">
+<label for="email">input type=email</label><input id="email" type="email" spellcheck="false" autocomplete="off">
+<label for="url">input type=url</label><input id="url" type="url" spellcheck="false" autocomplete="off">
+<label for="tel">input type=tel</label><input id="tel" type="tel" autocomplete="off">
+<label for="spell">input со встроенной проверкой орфографии</label><input id="spell" type="text" spellcheck="true" autocomplete="off">
+<label for="textarea">textarea</label><textarea id="textarea" spellcheck="false"></textarea>
+<label for="controlled">input, которым управляет скрипт (как в React)</label><input id="controlled" spellcheck="false" autocomplete="off">
+<label for="ce">contenteditable</label><div id="ce" contenteditable="true" spellcheck="false"></div>
+<label for="ce-plain">contenteditable="plaintext-only"</label><div id="ce-plain" contenteditable="plaintext-only" spellcheck="false"></div>
+<label for="ce-rich">contenteditable с готовым форматированием</label>
+<div id="ce-rich" contenteditable="true" spellcheck="false"><b>Жирный</b> и <i>курсив</i> </div>
+<label>contenteditable внутри shadow DOM</label><div id="shadow-host"></div>
+<label>iframe в режиме designMode</label><iframe id="design" title="designMode"></iframe>
+<label>Quill</label><div id="quill"></div>
+<label>Monaco (редактор кода, как в VS Code)</label><div id="monaco"></div>
+<label for="password">input type=password (Ясно не должно трогать)</label><input id="password" type="password" autocomplete="new-password">
+
+<script>
+  // A controlled input re-renders its value on every keystroke, as frameworks do.
+  const controlled = document.getElementById('controlled');
+  let model = '';
+  controlled.addEventListener('input', () => { model = controlled.value; controlled.value = model; });
+
+  const host = document.getElementById('shadow-host');
+  const shadow = host.attachShadow({ mode: 'open' });
+  shadow.innerHTML = '<div id="shadow-ce" contenteditable="true" spellcheck="false" style="border:1px solid #aaa;min-height:44px;padding:6px;border-radius:4px"></div>';
+
+  const design = document.getElementById('design');
+  design.contentDocument.designMode = 'on';
+  design.contentDocument.body.id = 'design-body';
+  design.contentDocument.body.spellcheck = false;
+</script>
+<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+<script>
+  const quill = new Quill('#quill', { theme: 'snow', modules: { toolbar: false } });
+  quill.root.id = 'quill-root';
+  quill.root.spellcheck = false;
+</script>
+<script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs/loader.js"></script>
+<script>
+  require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs' } });
+  require(['vs/editor/editor.main'], () => {
+    monaco.editor.create(document.getElementById('monaco'), {
+      value: '', language: 'plaintext', minimap: { enabled: false }, lineNumbers: 'off',
+      accessibilitySupport: 'on', wordBasedSuggestions: 'off', quickSuggestions: false
+    });
+  });
+</script>
+</body>
+</html>

@@ -5,8 +5,8 @@
 //   field-test <bundle id> <window title marker> <focus> [case…]
 //   focus: dom:<id> | class:<DOM class> | focused
 //
-// The field is read with Select All + Copy, so canvas editors (Google Docs) can be checked
-// too; the clipboard is restored afterwards.
+// Fields are read through Accessibility; canvas editors (Google Docs) with Select All + Copy,
+// and the clipboard is restored afterwards.
 import Cocoa
 import Carbon
 import ApplicationServices
@@ -136,7 +136,25 @@ func restoreClipboard() {
     if !items.isEmpty { pasteboard.writeObjects(items) }
 }
 
+// Google Docs types into a hidden field that never holds the text: read it via the clipboard.
+let canvas: Bool = {
+    var current = field
+    for _ in 0..<3 {
+        guard let parent = element(attribute(current, kAXParentAttribute)) else { return false }
+        if (attribute(parent, "AXDOMClassList") as? [String])?.contains("docs-texteventtarget-iframe") == true { return true }
+        current = parent
+    }
+    return false
+}()
+/// Text of a field that exposes it through Accessibility.
+func axText() -> String? { canvas ? nil : attribute(field, kAXValueAttribute) as? String }
+
+func normalize(_ text: String) -> String {
+    text.replacingOccurrences(of: "\u{00a0}", with: " ").replacingOccurrences(of: "\u{200b}", with: "")
+        .trimmingCharacters(in: .newlines)
+}
 func readField() -> String {
+    if let text = axText() { return normalize(text) }
     pasteboard.clearContents()
     let before = pasteboard.changeCount
     press(0, flags: .maskCommand)
@@ -147,12 +165,18 @@ func readField() -> String {
     let text = pasteboard.string(forType: .string) ?? ""
     press(124) // Collapse the selection to the end.
     Thread.sleep(forTimeInterval: 0.1)
-    return text.replacingOccurrences(of: "\u{00a0}", with: " ").replacingOccurrences(of: "\u{200b}", with: "")
-        .trimmingCharacters(in: .newlines)
+    return normalize(text)
 }
 func clearField() {
-    press(0, flags: .maskCommand)
-    Thread.sleep(forTimeInterval: 0.25)
+    if let text = axText() {
+        guard !text.isEmpty else { return }
+        var range = CFRange(location: 0, length: text.utf16.count)
+        AXUIElementSetAttributeValue(field, kAXSelectedTextRangeAttribute as CFString, AXValueCreate(.cfRange, &range)!)
+        Thread.sleep(forTimeInterval: 0.15)
+    } else {
+        press(0, flags: .maskCommand)
+        Thread.sleep(forTimeInterval: 0.25)
+    }
     press(51)
     Thread.sleep(forTimeInterval: 0.3)
 }

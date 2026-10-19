@@ -36,8 +36,10 @@ public final class SystemLexicon {
         cacheLock.unlock()
         if let cached { return cached }
         serviceLock.lock()
-        let range = NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0, language: language.rawValue,
-                                                        wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
+        let range = autoreleasepool {
+            NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0, language: language.rawValue,
+                                                wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
+        }
         serviceLock.unlock()
         let known = range.location == NSNotFound
         cacheLock.lock()
@@ -55,9 +57,14 @@ public final class SystemLexicon {
         let cached = guessCache[key]
         cacheLock.unlock()
         if let cached { return cached }
+        // Each guess call returns autoreleased objects holding a Mach port. Worker threads
+        // drain their pools rarely, so without a pool per call a long run (or a long-lived
+        // app) exhausts the port limit and the kernel kills the process.
         serviceLock.lock()
-        let raw = NSSpellChecker.shared.guesses(forWordRange: NSRange(location: 0, length: (word as NSString).length), in: word,
-                                                language: language.rawValue, inSpellDocumentWithTag: 0) ?? []
+        let raw = autoreleasepool {
+            NSSpellChecker.shared.guesses(forWordRange: NSRange(location: 0, length: (word as NSString).length), in: word,
+                                          language: language.rawValue, inSpellDocumentWithTag: 0) ?? []
+        }
         serviceLock.unlock()
         let lower = WordText.canonical(word.lowercased())
         var guesses: [String] = []

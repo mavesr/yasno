@@ -36,6 +36,14 @@ public struct CorrectionRequest {
         else { return nil }
         return prefix
     }
+
+    /// A currency sign straight after the word (nsc$ → тыс$) stays as typed, like the
+    /// symbols before it; the Russian layout would turn Shift-4 into %.
+    var closingSymbols: String? {
+        let count = text.reversed().prefix(while: WordText.closingSymbols.contains).count
+        guard count > 0, count < text.count else { return nil }
+        return String(text.suffix(count))
+    }
 }
 
 extension Detector {
@@ -43,6 +51,7 @@ extension Detector {
     /// no correction can follow, whatever the surrounding text turns out to be.
     public func mayCorrect(_ request: CorrectionRequest) -> Bool {
         if let prefix = request.openingSymbols { return mayCorrect(request.with(text: String(request.text.dropFirst(prefix.count)))) }
+        if let suffix = request.closingSymbols { return mayCorrect(request.with(text: String(request.text.dropLast(suffix.count)))) }
         if request.liveConverted {
             // A live-converted word only gets a spelling pass, once it is complete.
             guard !request.whileTyping, request.correctSpelling else { return false }
@@ -61,6 +70,11 @@ extension Detector {
         if let prefix = request.openingSymbols {
             return correction(request.with(text: String(request.text.dropFirst(prefix.count))), context: context + prefix).map {
                 Suggestion(original: request.text, replacement: prefix + $0.replacement, target: $0.target, score: $0.score)
+            }
+        }
+        if let suffix = request.closingSymbols {
+            return correction(request.with(text: String(request.text.dropLast(suffix.count))), context: context).map {
+                Suggestion(original: request.text, replacement: $0.replacement + suffix, target: $0.target, score: $0.score)
             }
         }
         if request.liveConverted {

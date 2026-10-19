@@ -18,23 +18,21 @@ final class ReportedWordTests: XCTestCase {
         XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут")
     }
 
-    func testSymbolAfterWordFollowsTheKey() throws {
-        // A symbol typed straight after the word belongs to the same wrong layout: Shift-4
-        // after nsc is тыс% in Russian, not тыс$.
+    func testCurrencySignAfterWordStays() throws {
+        // Shift-4 after nsc means тыс$; the Russian layout alone would make it тыс%.
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
-        func decide(_ text: String) -> String? {
+        func decide(_ text: String, typing: Bool = false) -> String? {
             let request = CorrectionRequest(text: text, source: abc, layouts: [abc, ru, uk], preferredTargetID: ru.id,
-                                            correctSpelling: true, whileTyping: false)
+                                            correctSpelling: true, whileTyping: typing)
             guard detector.mayCorrect(request) else { return nil }
             return detector.correction(request, context: "")?.replacement
         }
-        for (typed, word) in [("nsc$", "тыс"), ("ghbdtn%", "привет"), ("ghbdtn*", "привет")] {
-            let symbol = try XCTUnwrap(abc.convert(String(typed.last!), to: ru))
-            XCTAssertNotEqual(symbol, String(typed.last!), typed)
-            XCTAssertEqual(decide(typed), word + symbol, typed)
-        }
-        // Real words keep their symbol.
-        for valid in ["cost$", "hello%", "test*"] { XCTAssertNil(decide(valid), valid) }
+        XCTAssertEqual(decide("nsc$"), "тыс$")
+        XCTAssertEqual(decide("ghbdtn$"), "привет$")
+        XCTAssertEqual(decide("ghbdtn$", typing: true), "привет$")
+        XCTAssertEqual(decide("ghbdtn€"), "привет€")
+        XCTAssertNil(decide("cost$"))
+        XCTAssertNil(decide("$"))
     }
 
     func testSymbolBeforeWordStaysAndWordConverts() throws {

@@ -6,6 +6,8 @@ enum WordText {
     /// Symbols that open a word (/команда, «цитата, #тег) without being part of it.
     static let prefixPunctuation = Set("/\\([{«\"„“‘'*#-")
     static let apostrophes = Set("'’ʼ‘")
+    /// Currency signs after a word (тыс$) are meant as typed: no layout puts them elsewhere.
+    static let closingSymbols = Set("$€£₽¥¢")
 
     static func canonical(_ text: String) -> String {
         guard text.contains(where: { $0 != "'" && apostrophes.contains($0) }) else { return text }
@@ -20,13 +22,6 @@ enum WordText {
             end = previous
         }
         return (String(text[..<end]), String(text[end...]))
-    }
-
-    /// Splits off every trailing symbol, not only sentence punctuation: тыс% or тыс$
-    /// typed straight after a word end the word, as a space would.
-    static func coreAndSymbols(_ text: String) -> (core: String, suffix: String) {
-        let count = text.reversed().prefix { !$0.isLetter && !$0.isNumber }.count
-        return (String(text.dropLast(count)), String(text.suffix(count)))
     }
 
     static func isOrthographicWord(_ text: String) -> Bool {

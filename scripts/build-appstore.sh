@@ -68,7 +68,8 @@ xattr -cr "$YASNO_APP"
 codesign --force --sign "$YASNO_APP_IDENTITY" --options runtime --timestamp \
     --entitlements "$YASNO_WORK/entitlements.plist" --identifier "$YASNO_BUNDLE_ID" "$YASNO_APP"
 codesign --verify --deep --strict --verbose=2 "$YASNO_APP"
-lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch arm64 x86_64
+lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch arm64
+lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch x86_64
 
 YASNO_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_PLIST")"
 YASNO_PKG="$PWD/dist/Yasno-$YASNO_VERSION-appstore.pkg"

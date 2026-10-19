@@ -70,6 +70,9 @@ final class AppModel: ObservableObject {
         let cycle: LayoutCycle?
         var live = false
         var physicalKeys: [KeyboardLayout.KeyStroke]? = nil
+        /// Made with keystrokes in a field without readable text: what followed the word, and
+        /// the input revision right after the edit (range and caret mean nothing there).
+        var keystrokes: (suffix: String, revision: UInt64)? = nil
     }
 
     init() {
@@ -381,6 +384,10 @@ final class AppModel: ObservableObject {
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else { return }
+            if editor.isCanvasTypingTarget {
+                self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
+                return
+            }
             if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
                ProcessInfo.processInfo.systemUptime < blocked.until { return }
             let suffix = token.text + token.suffix
@@ -388,8 +395,12 @@ final class AppModel: ObservableObject {
             // while later physical input is held, including a word with no trailing space.
             guard let caret = editor.waitForCaret(after: token, deadline: deadline,
                 stillValid: { self.monitor.revision == token.revision }) else {
-                // Only a genuine timeout counts; newer input invalidating the wait does not.
-                if whileTyping, self.monitor.revision == token.revision {
+                guard self.monitor.revision == token.revision else { return }
+                // Another editor drawn on a canvas: the field still shows nothing typed.
+                if editor.exposesNoText {
+                    self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
+                } else if whileTyping {
+                    // Only a genuine timeout counts; newer input invalidating the wait does not.
                     self.liveBlocked = (editor.element, ProcessInfo.processInfo.systemUptime + 30)
                 }
                 return
@@ -416,10 +427,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Worker, inside the gate. Nothing can be read back from such a field, so the edit erases
+    /// only what this token typed and keeps the text before it unread and untouched.
+    private func correctByKeystrokes(_ token: KeyboardMonitor.Token, request: CorrectionRequest, source: KeyboardLayout,
+                                     editor: AccessibleEditor, whileTyping: Bool) {
+        guard let suggestion = detector.correction(request, context: ""),
+              let edit = KeystrokeEdit(typed: token.text, replacement: suggestion.replacement, suffix: token.suffix),
+              monitor.revision == token.revision, !IsSecureEventInputEnabled(),
+              monitor.commitGate(revision: token.revision) else { return }
+        let result: AccessibleEditor.EditResult = KeyboardMonitor.typeKeystrokes(edit) ? .success : .failed
+        DispatchQueue.main.async {
+            self.handle(result, editor: editor, range: CFRange(), caret: CFRange(), original: token.text,
+                        replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target,
+                        live: whileTyping, keystrokeSuffix: token.suffix)
+        }
+    }
+
     private func handle(_ result: AccessibleEditor.EditResult, editor: AccessibleEditor, range: CFRange,
                         caret: CFRange, original: String, replacement: String, sourceID: String, target: KeyboardLayout,
                         cycle: LayoutCycle? = nil, live: Bool = false,
-                        physicalKeys: [KeyboardLayout.KeyStroke]? = nil) {
+                        physicalKeys: [KeyboardLayout.KeyStroke]? = nil, keystrokeSuffix: String? = nil) {
         switch result {
         case .success:
             corrections += 1
@@ -428,7 +455,8 @@ final class AppModel: ObservableObject {
                               caret: CFRange(location: caret.length == 0
                                   ? caret.location + replacement.utf16.count - range.length
                                   : range.location + replacement.utf16.count, length: 0), sourceID: sourceID,
-                              layoutID: target.id, cycle: cycle, live: live, physicalKeys: physicalKeys)
+                              layoutID: target.id, cycle: cycle, live: live, physicalKeys: physicalKeys,
+                              keystrokes: keystrokeSuffix.map { ($0, monitor.revision) })
             // The transaction confirmed focus just before returning. Repeating the full AX
             // focus lookup here would hold queued input on main for no extra safety.
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == editor.pid {
@@ -439,11 +467,72 @@ final class AppModel: ObservableObject {
                     monitor.resumeAfterLiveCorrection(text: replacement, sourceID: target.id, pid: editor.pid)
                 }
             }
+            // Selecting the layout restarts the input revision; a later Shift counts from here.
+            if keystrokeSuffix != nil { receipt?.keystrokes?.revision = monitor.revision }
             detail = cycle == nil ? "Исправлено. Короткий Shift — отменить." : "Раскладка: \(target.name). Ещё короткий Shift — следующий язык."
         case .unsupported: detail = "Это поле не поддерживает безопасную замену текста."
         case .failed: detail = "Не удалось подтвердить замену в этом поле."
         case .stale: break
         }
+    }
+
+    /// Worker, inside the gate. Shift in a field without readable text: undo or cycle the last
+    /// keystroke edit while nothing was typed since, else convert the word just typed.
+    /// Returns false when there is nothing to convert.
+    private func manualByKeystrokes(editor: AccessibleEditor, expectedToken: KeyboardMonitor.Token?, receipt: Receipt?,
+                                    revision: UInt64, sourceID: String, layouts: [KeyboardLayout],
+                                    preferredID: String?, bundleID: String?) -> Bool {
+        func type(_ edit: KeystrokeEdit?) -> Bool {
+            guard let edit, monitor.revision == revision, !IsSecureEventInputEnabled(),
+                  monitor.commitGate(revision: revision) else { return false }
+            return KeyboardMonitor.typeKeystrokes(edit)
+        }
+        if let receipt, let keystrokes = receipt.keystrokes, CFEqual(receipt.editor.element, editor.element),
+           expectedToken.map({ $0.pid == editor.pid && [receipt.original, receipt.replacement].contains($0.text) })
+               ?? (revision == keystrokes.revision &+ 1) {
+            let suffix = expectedToken?.suffix ?? keystrokes.suffix
+            guard let origin = layouts.first(where: { $0.id == receipt.sourceID }) else { return true }
+            if let cycle = receipt.cycle {
+                guard sourceID == receipt.layoutID, let nextID = cycle.next(after: sourceID),
+                      let target = layouts.first(where: { $0.id == nextID }),
+                      let converted = target.id == origin.id ? receipt.original
+                          : detector.convertTextManually(receipt.original, source: origin, target: target, physicalKeys: receipt.physicalKeys),
+                      type(KeystrokeEdit(typed: receipt.replacement, replacement: converted, suffix: suffix)) else { return true }
+                DispatchQueue.main.async {
+                    self.handle(.success, editor: editor, range: CFRange(), caret: CFRange(), original: receipt.original,
+                                replacement: converted, sourceID: receipt.sourceID, target: target, cycle: cycle,
+                                physicalKeys: receipt.physicalKeys, keystrokeSuffix: suffix)
+                }
+                return true
+            }
+            guard type(KeystrokeEdit(typed: receipt.replacement, replacement: receipt.original, suffix: suffix)) else { return true }
+            DispatchQueue.main.async {
+                let compatible = KeyboardLayout.cycleOrder(layouts).filter { origin.convert(receipt.original, to: $0) != nil }
+                self.receipt = Receipt(editor: editor, original: receipt.original, replacement: receipt.original,
+                    range: CFRange(), caret: CFRange(), sourceID: receipt.sourceID, layoutID: receipt.sourceID,
+                    cycle: LayoutCycle(layoutIDs: compatible.map(\.id)), keystrokes: (suffix, self.monitor.revision))
+                _ = self.selectManually(origin, bundleID: bundleID)
+                if receipt.live, suffix.isEmpty {
+                    self.monitor.resumeAfterLiveCorrection(text: receipt.original, sourceID: origin.id, pid: editor.pid)
+                }
+                self.receipt?.keystrokes?.revision = self.monitor.revision
+                self.detail = "Замена отменена."
+            }
+            return true
+        }
+        guard let token = expectedToken, token.pid == editor.pid, token.sourceID == sourceID, !token.text.isEmpty,
+              let source = layouts.first(where: { $0.id == sourceID }) else { return expectedToken != nil }
+        guard let candidate = detector.convertManually(token.text, source: source, layouts: layouts,
+                                                       preferredTargetID: preferredID, physicalKeys: token.physicalKeys),
+              type(KeystrokeEdit(typed: token.text, replacement: candidate.replacement, suffix: token.suffix)) else { return true }
+        let compatible = KeyboardLayout.cycleOrder(layouts).filter { source.convert(token.text, to: $0) != nil }
+        let cycle = LayoutCycle(layoutIDs: compatible.map(\.id), startingID: sourceID, firstTargetID: candidate.target.id)
+        DispatchQueue.main.async {
+            self.handle(.success, editor: editor, range: CFRange(), caret: CFRange(), original: token.text,
+                        replacement: candidate.replacement, sourceID: sourceID, target: candidate.target, cycle: cycle,
+                        physicalKeys: token.physicalKeys, keystrokeSuffix: token.suffix)
+        }
+        return true
     }
 
     @discardableResult
@@ -495,6 +584,14 @@ final class AppModel: ObservableObject {
             }
             guard let editor = AccessibleEditor.focused(pid: app.processIdentifier) else {
                 if expectedToken == nil { switchOnly() }
+                return
+            }
+            // A keystroke edit is undone with keystrokes too: such a field has nothing to read back.
+            if editor.isCanvasTypingTarget || (receipt?.keystrokes != nil && receipt.map { CFEqual($0.editor.element, editor.element) } == true) {
+                if !self.manualByKeystrokes(editor: editor, expectedToken: expectedToken, receipt: receipt, revision: revision,
+                                            sourceID: sourceID, layouts: layouts, preferredID: preferredID, bundleID: app.bundleIdentifier) {
+                    switchOnly()
+                }
                 return
             }
             let caret: CFRange?

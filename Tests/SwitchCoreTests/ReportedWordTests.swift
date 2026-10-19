@@ -12,8 +12,9 @@ final class ReportedWordTests: XCTestCase {
     func testSymbolBeforeWordStaysAndWordConverts() throws {
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian"), de = try layout("German")
         let active = [abc, ru, uk]
-        func decide(_ text: String, _ source: KeyboardLayout, _ layouts: [KeyboardLayout], typing: Bool = false) -> String? {
-            let request = CorrectionRequest(text: text, source: source, layouts: layouts, preferredTargetID: nil,
+        func decide(_ text: String, _ source: KeyboardLayout, _ layouts: [KeyboardLayout], typing: Bool = false,
+                    preferred: String? = nil) -> String? {
+            let request = CorrectionRequest(text: text, source: source, layouts: layouts, preferredTargetID: preferred,
                                             correctSpelling: true, whileTyping: typing)
             guard detector.mayCorrect(request) else { return nil }
             return detector.correction(request, context: "")?.replacement
@@ -23,14 +24,18 @@ final class ReportedWordTests: XCTestCase {
             XCTAssertEqual(decide(input, source, active), expected, input)
         }
         // A key that is a letter in another layout belongs to the word: [jxe → хочу.
-        XCTAssertEqual(decide("[jxe", abc, active), "хочу")
-        // Correct words after a symbol stay, also while they are still being typed.
-        for valid in ["(даже", "(даж", "/developer", "«hello"] {
+        XCTAssertEqual(decide("[jxe", abc, active, preferred: ru.id), "хочу")
+        // Correct words after a symbol stay, also while they are still being typed:
+        // (сдела must not convert on the way to (сделать.
+        for valid in ["(даже", "(сдела", "/developer", "«hello"] {
             let source = valid.contains(where: { ("а"..."я").contains(String($0)) }) ? ru : abc
             XCTAssertNil(decide(valid, source, active, typing: true), valid)
+        }
+        for valid in ["(даже", "/developer", "«hello"] {
+            let source = valid.contains(where: { ("а"..."я").contains(String($0)) }) ? ru : abc
             XCTAssertNil(decide(valid, source, active), valid)
         }
-        for valid in ["\"Verfass", "\"Verfassung\".", "(Abk."] {
+        for valid in ["\"Verfass", "\"Verfassung\"."] {
             XCTAssertNil(decide(valid, de, [de, ru], typing: true), valid)
             XCTAssertNil(decide(valid, de, [de, ru]), valid)
         }

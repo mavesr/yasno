@@ -10,6 +10,11 @@ struct AccessibleEditor {
     let element: AXUIElement
     let pid: pid_t
 
+    /// The App Store build runs in the App Sandbox, which refuses AX requests to other
+    /// applications (kAXErrorCannotComplete) while posting keys still works. There every
+    /// field is treated like a canvas target: the word is erased and retyped with keystrokes.
+    static let blind = ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+
     /// Chromium and Electron build their web AX tree only on request. Arc has a native
     /// shell, so asking only that shell for its focused element can miss the web field.
     /// Only AXManualAccessibility is used: AXEnhancedUserInterface is meant for VoiceOver
@@ -19,7 +24,7 @@ struct AccessibleEditor {
 
     static func prepareApplication(pid: pid_t) {
         preparedLock.lock(); let known = prepared.contains(pid); preparedLock.unlock()
-        guard !known else { return }
+        guard !known, !blind else { return }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
         let attribute = "AXManualAccessibility" as CFString
@@ -47,6 +52,8 @@ struct AccessibleEditor {
     static func focused(pid: pid_t) -> AccessibleEditor? {
         guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return nil }
         let app = AXUIElementCreateApplication(pid)
+        // No field can be inspected: the application stands in for its focused field.
+        if blind { return AccessibleEditor(element: app, pid: pid) }
         AXUIElementSetMessagingTimeout(app, 0.12)
         func focusedElement(of root: AXUIElement) -> AXUIElement? {
             var raw: CFTypeRef?
@@ -84,6 +91,7 @@ struct AccessibleEditor {
     /// holds only zero-width placeholders, never the text, so it can be edited only with
     /// keystrokes. Its frame carries a known class, recognised without waiting for a caret.
     var isCanvasTypingTarget: Bool {
+        if Self.blind { return true }
         guard exposesNoText else { return false }
         var current = element
         for _ in 0..<3 {

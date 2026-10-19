@@ -80,6 +80,35 @@ struct AccessibleEditor {
         return ownerURL.path.hasPrefix(appURL.path + "/")
     }
 
+    /// Google Docs and Slides draw the document themselves. Keys go to a hidden field that
+    /// holds only zero-width placeholders, never the text, so it can be edited only with
+    /// keystrokes. Its frame carries a known class, recognised without waiting for a caret.
+    var isCanvasTypingTarget: Bool {
+        guard exposesNoText else { return false }
+        var current = element
+        for _ in 0..<3 {
+            var raw: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &raw) == .success,
+                  let raw, CFGetTypeID(raw) == AXUIElementGetTypeID() else { return false }
+            current = unsafeBitCast(raw, to: AXUIElement.self)
+            var classes: CFTypeRef?
+            if AXUIElementCopyAttributeValue(current, "AXDOMClassList" as CFString, &classes) == .success,
+               (classes as? [String])?.contains("docs-texteventtarget-iframe") == true { return true }
+        }
+        return false
+    }
+
+    /// A text field or area whose value is empty or only invisible placeholders.
+    var exposesNoText: Bool {
+        var role: CFTypeRef?, raw: CFTypeRef?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
+        guard [kAXTextAreaRole, kAXTextFieldRole].contains(role as? String ?? ""),
+              AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &raw) == .success,
+              let value = raw as? String, value.utf16.count <= 16 else { return false }
+        let invisible: Set<Unicode.Scalar> = ["\u{200B}", "\u{200C}", "\u{200D}", "\u{2060}", "\u{FEFF}"]
+        return value.unicodeScalars.allSatisfy { invisible.contains($0) || $0.properties.isWhitespace }
+    }
+
     var selection: CFRange? {
         var raw: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, &raw) == .success,

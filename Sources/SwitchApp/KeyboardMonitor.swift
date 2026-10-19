@@ -587,9 +587,35 @@ final class KeyboardMonitor {
     }
 
     static func insertUnicode(_ text: String, pid: pid_t) -> Bool {
-        guard CGPreflightPostEventAccess(), let source = CGEventSource(stateID: .privateState) else { return false }
+        post(unicode: text) { $0.postToPid(pid) }
+    }
+
+    /// Erase and retype at the caret of a field whose text cannot be read. Posted into the
+    /// session stream behind the keys already delivered: a direct post to the application
+    /// could overtake a Space still on its way, and nothing can confirm the result.
+    static func typeKeystrokes(_ edit: KeystrokeEdit) -> Bool {
+        guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
+        for _ in 0..<edit.deletions {
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else { return false }
+            for event in [down, up] {
+                event.flags = []
+                event.setIntegerValueField(.eventSourceUserData, value: editTag)
+                event.post(tap: .cgSessionEventTap)
+            }
+        }
+        return post(unicode: edit.insertion) { $0.post(tap: .cgSessionEventTap) }
+    }
+
+    private static func editSource() -> CGEventSource? {
+        guard let source = CGEventSource(stateID: .privateState) else { return nil }
         source.userData = editTag
         EventReplay.allowLocalInput(source)
+        return source
+    }
+
+    private static func post(unicode text: String, with deliver: (CGEvent) -> Void) -> Bool {
+        guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
         let units = Array(text.utf16)
         for offset in stride(from: 0, to: units.count, by: 16) {
             let chunk = Array(units[offset..<min(offset + 16, units.count)])
@@ -600,8 +626,8 @@ final class KeyboardMonitor {
                 event.setIntegerValueField(.eventSourceUserData, value: editTag)
                 event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
             }
-            down.postToPid(pid)
-            up.postToPid(pid)
+            deliver(down)
+            deliver(up)
         }
         return true
     }

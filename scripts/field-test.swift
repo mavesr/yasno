@@ -95,10 +95,17 @@ func post(_ key: CGKeyCode, down: Bool, flags: CGEventFlags = []) {
     let event = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: down)!
     event.flags = flags
     event.setIntegerValueField(.eventSourceUserData, value: 0x5941534E4F54)
-    if key == 56 { event.type = .flagsChanged }
+    if key == 56 || key == 55 { event.type = .flagsChanged }
     event.post(tap: .cghidEventTap)
 }
-func press(_ key: CGKeyCode, flags: CGEventFlags = []) { post(key, down: true, flags: flags); post(key, down: false, flags: flags) }
+func press(_ key: CGKeyCode, flags: CGEventFlags = []) {
+    // Some browsers act on a shortcut only after seeing the Command key itself go down.
+    let command = flags.contains(.maskCommand)
+    if command { post(55, down: true, flags: .maskCommand); Thread.sleep(forTimeInterval: 0.02) }
+    post(key, down: true, flags: flags); Thread.sleep(forTimeInterval: command ? 0.03 : 0)
+    post(key, down: false, flags: flags)
+    if command { Thread.sleep(forTimeInterval: 0.02); post(55, down: false) }
+}
 
 let letterCodes: [CGKeyCode] = [0,11,8,2,14,3,5,4,34,38,40,37,46,45,31,35,12,15,1,17,32,9,13,7,16,6]
 var positions: [Character: (CGKeyCode, Bool)] = [" ": (49, false), "/": (44, false), ",": (43, false), ".": (47, false),

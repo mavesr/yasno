@@ -28,6 +28,32 @@ final class ManualEditingTests: XCTestCase {
         }
     }
 
+    func testLongPunctuationTailConvertsInBoundedTime() throws {
+        let active = try layouts()
+        for (text, preferred, expected) in [("q" + String(repeating: ".", count: 4095), nil, "й" + String(repeating: ".", count: 4095)),
+                                            ("ghbdtn" + String(repeating: "!", count: 4000), active[1].id,
+                                             "привет" + String(repeating: "!", count: 4000))] {
+            let start = ProcessInfo.processInfo.systemUptime
+            let result = detector.convertManually(text, source: active[0], layouts: active, preferredTargetID: preferred)
+            XCTAssertLessThan(ProcessInfo.processInfo.systemUptime - start, 1.0)
+            XCTAssertEqual(result?.replacement, expected)
+        }
+    }
+
+    func testCapsLockUsesTheLayoutsOwnTable() throws {
+        let installed = KeyboardLayout.installed(enabledOnly: false)
+        let active = try layouts(), abc = active[0], ru = active[1]
+        let german = try XCTUnwrap(installed.first { $0.id == "com.apple.keylayout.German" })
+        // On a Mac, Shift does not invert Caps Lock, and ß has no capital form there.
+        XCTAssertEqual(abc.render([.init(key: 0, shift: true, capsLock: true)]), "A")
+        XCTAssertEqual(abc.render([.init(key: 0, capsLock: true)]), "A")
+        XCTAssertEqual(ru.render([.init(key: 17, shift: true, capsLock: true)]), "Е")
+        XCTAssertEqual(german.render([.init(key: 27, capsLock: true)]), "ß")
+        XCTAssertEqual(abc.render([.init(key: 18, capsLock: true)]), "1")
+        XCTAssertEqual(abc.character(key: 0, shift: false), "a")
+        XCTAssertEqual(abc.key(for: "A"), 0)
+    }
+
     func testStandaloneSymbolsUsePhysicalConversionInsteadOfSentencePunctuationRules() throws {
         let active = try layouts()
         for source in active {

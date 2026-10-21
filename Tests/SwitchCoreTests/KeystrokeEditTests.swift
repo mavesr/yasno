@@ -20,8 +20,11 @@ final class KeystrokeEditTests: XCTestCase {
     }
 
     func testNothingToDo() {
-        XCTAssertNil(KeystrokeEdit(typed: "привет", replacement: "привет", suffix: " "))
+        // Russian and Ukrainian give the same text: the Shift cycle still moves on.
+        XCTAssertEqual(KeystrokeEdit(typed: "привет", replacement: "привет", suffix: " "),
+                       KeystrokeEdit(deletions: 0, insertion: ""))
         XCTAssertNil(KeystrokeEdit(typed: "", replacement: "x"))
+        XCTAssertNil(KeystrokeEdit(typed: "x", replacement: ""))
     }
 }
 

@@ -100,7 +100,7 @@ final class AppModel: ObservableObject {
         monitor.onManual = { [weak self] token in self?.manual(after: token) }
         monitor.onCancelAnalysis = { [weak self] in self?.cancelTypingTask() }
         monitor.onFault = { [weak self] in
-            self?.detail = "Перехват приостановлен после сбоя доставки событий. Перезапустите Ясно."
+            self?.detail = "Перехват приостановлен после повторных сбоев доставки событий и включится сам."
             self?.refresh()
         }
         monitor.onRecovered = { [weak self] in
@@ -136,6 +136,9 @@ final class AppModel: ObservableObject {
         }
         update(\.loginEnabled, SMAppService.mainApp.status == .enabled)
         worker.async { [self] in _ = detector }
+        // Process-wide AX timeout before the first refresh registers a focus observer on main:
+        // an application that does not answer must not stall the UI queue for seconds.
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.12)
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refresh() }
     }
@@ -211,6 +214,7 @@ final class AppModel: ObservableObject {
 
     func refresh() {
         guard !shuttingDown else { return }
+        if monitor.resumeAfterQuietWindow() { detail = "" }
         update(\.accessibility, AXIsProcessTrusted())
         update(\.inputMonitoring, CGPreflightListenEventAccess())
         update(\.secureInput, IsSecureEventInputEnabled())
@@ -231,7 +235,7 @@ final class AppModel: ObservableObject {
         else if secureInput { nextStatus = "Защищённый ввод" }
         else if excluded { nextStatus = "Пауза в этом приложении" }
         else if layouts.count < 2 { nextStatus = "Нужны две раскладки" }
-        else if monitor.faulted { nextStatus = "Перезапустите Ясно" }
+        else if monitor.faulted { nextStatus = "Пауза после сбоев" }
         else if !monitor.start() { nextStatus = "Не удалось подключить клавиатуру" }
         else { nextStatus = "Готово к работе" }
         update(\.status, nextStatus)
@@ -432,7 +436,7 @@ final class AppModel: ObservableObject {
     private func correctByKeystrokes(_ token: KeyboardMonitor.Token, request: CorrectionRequest, source: KeyboardLayout,
                                      editor: AccessibleEditor, whileTyping: Bool) {
         guard let suggestion = detector.correction(request, context: ""),
-              let edit = KeystrokeEdit(typed: token.text, replacement: suggestion.replacement, suffix: token.suffix),
+              let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source, blind: AccessibleEditor.blind),
               monitor.revision == token.revision, !IsSecureEventInputEnabled(),
               monitor.commitGate(revision: token.revision) else { return }
         let result: AccessibleEditor.EditResult = KeyboardMonitor.typeKeystrokes(edit) ? .success : .failed
@@ -443,12 +447,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// An automatic correction made blind, or nil where erasing by count is unsafe. The field
+    /// may already hold the application's own spelling fix, so only layout changes are made.
+    /// The App Store build cannot see the field at all: a lone letter there is as likely a
+    /// shortcut on a canvas or a shell command as a word, and only Shift converts it.
+    static func keystrokeEdit(for token: KeyboardMonitor.Token, suggestion: Suggestion, source: KeyboardLayout,
+                              blind: Bool) -> KeystrokeEdit? {
+        guard suggestion.target.id != source.id, !(blind && token.text.count == 1) else { return nil }
+        return KeystrokeEdit(typed: token.text, replacement: suggestion.replacement, suffix: token.suffix)
+    }
+
     private func handle(_ result: AccessibleEditor.EditResult, editor: AccessibleEditor, range: CFRange,
                         caret: CFRange, original: String, replacement: String, sourceID: String, target: KeyboardLayout,
                         cycle: LayoutCycle? = nil, live: Bool = false,
                         physicalKeys: [KeyboardLayout.KeyStroke]? = nil, keystrokeSuffix: String? = nil) {
         switch result {
         case .success:
+            // The word just typed is gone from the field: a later Shift or Backspace must
+            // not act on it. A layout change resets too; a spelling fix keeps the layout.
+            // Before the receipt, which records the revision a keystroke undo counts from.
+            if !live { monitor.reset() }
             corrections += 1
             receipt = Receipt(editor: editor, original: original, replacement: replacement,
                               range: CFRange(location: range.location, length: replacement.utf16.count),

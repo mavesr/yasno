@@ -57,6 +57,8 @@ extension Detector {
                                     context: String = "", allowUnresolvedPreference: Bool = false) -> Suggestion? {
         guard !ignored.contains(word.lowercased()), word.count <= 40 else { return nil }
         let (rawCore, suffix) = WordText.coreAndSuffix(word)
+        // An exception stays one when punctuation follows it.
+        guard !ignored.contains(rawCore.lowercased()) else { return nil }
         let core = WordText.canonical(rawCore)
         let letters = core.filter(\.isLetter)
         guard (3...32).contains(core.count), !letters.isEmpty,

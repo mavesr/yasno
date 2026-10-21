@@ -53,6 +53,8 @@ final class KeyboardMonitor {
     private var sourceID = "" { didSet { publishReplayLayout() } }
     private var pid: pid_t = 0
     private var shiftGesture = ShiftTapGesture()
+    private var shiftPressed: UInt64 = 0 // Main only: timestamp of the last Shift press.
+    private var lastScroll: UInt64 = 0 // Under lock: timestamp of the last scroll the user made.
     private var boundaryShiftGesture = ShiftTapGesture() // Tap-side reservation only; under lock.
     private let lock = NSLock()
     private var generation: UInt64 = 0
@@ -83,9 +85,10 @@ final class KeyboardMonitor {
     private let clock: () -> UInt64
     // Key-up is safe to deliver while AX is editing; delaying it turns a short
     // physical press into a long press and can summon the system accent picker.
-    // Not while a repeat of that key is still queued: it would never be released.
+    // Not while a repeat of that key is queued or on its way back: it would never be released.
     private var deliveredKeys: Set<Int64> = []
     private var replayedDowns: [Int64: CGEvent] = [:] // Prepared down metadata, under lock.
+    private var replaysInFlight: Set<Int64> = [] // Downs posted by drainNext, not yet back at the tap; under lock.
     private let replaySource = CGEventSource(stateID: .privateState)
     private var pending: [CGEvent] = []
     private let replayTag: Int64 = 0x5941534E4F
@@ -193,6 +196,7 @@ final class KeyboardMonitor {
         }
         draining = true; replayInFlight = true; replaySequence &+= 1
         replayAcknowledgements = batch.count
+        for item in batch where item.type == .keyDown { replaysInFlight.insert(item.getIntegerValueField(.keyboardEventKeycode)) }
         lastProgress = clock()
         let sequence = replaySequence
         let layout = replayLayout
@@ -205,6 +209,7 @@ final class KeyboardMonitor {
             guard let self else { return }
             self.lock.lock()
             let missing = self.replayInFlight && self.replaySequence == sequence && !self.failureQueued
+            if missing { self.failureQueued = true }
             self.lock.unlock()
             guard missing else { return }
             self.failOpen()
@@ -274,11 +279,13 @@ final class KeyboardMonitor {
         return true
     }
 
-    /// Caller holds lock.
+    /// Caller holds lock. A boundary reserved here has not been observed on main yet, and the
+    /// keys behind it are released now: its Space must not open a gate when main catches up.
     private func clearCapture() {
-        pending = []; gated = false; boundaryReserved = false; boundaryCancelled = false
+        boundaryCancelled = boundaryReserved || boundaryCancelled
+        pending = []; gated = false; boundaryReserved = false
         draining = false; committing = false; replayInFlight = false; replayAcknowledgements = 0
-        gateOwner = nil
+        gateOwner = nil; replaysInFlight = []
     }
 
     /// Tap thread. Releases captured input without the main queue once no gate or replay
@@ -323,7 +330,7 @@ final class KeyboardMonitor {
         lock.lock(); defer { lock.unlock() }
         if event.type == .keyUp {
             let key = event.getIntegerValueField(.keyboardEventKeycode)
-            if deliveredKeys.contains(key), !pending.contains(where: {
+            if deliveredKeys.contains(key), !replaysInFlight.contains(key), !pending.contains(where: {
                 $0.type == .keyDown && $0.getIntegerValueField(.keyboardEventKeycode) == key
             }) { return false }
         }
@@ -416,8 +423,7 @@ final class KeyboardMonitor {
                 // Observed only so that Shift+scroll is a chord, not a manual Shift tap.
                 // Scrolling is never held, queued or typed; momentum is not the user's action.
                 if event.getIntegerValueField(.scrollWheelEventMomentumPhase) == 0 {
-                    lock.lock(); let pressed = boundaryShiftGesture.isPressed; boundaryShiftGesture.cancel(); lock.unlock()
-                    if pressed { DispatchQueue.main.async { [weak self] in self?.shiftGesture.cancel() } }
+                    lock.lock(); boundaryShiftGesture.cancel(); lastScroll = event.timestamp; lock.unlock()
                 }
                 return Unmanaged.passUnretained(event)
             }
@@ -432,7 +438,7 @@ final class KeyboardMonitor {
                 var down: CGEvent?
                 if type == .keyDown {
                     deliveredKeys.insert(key)
-                    if tag == replayTag { replayedDowns[key] = event.copy() }
+                    if tag == replayTag { replayedDowns[key] = event.copy(); replaysInFlight.remove(key) }
                     else { replayedDowns.removeValue(forKey: key) }
                 }
                 if type == .keyUp { deliveredKeys.remove(key); down = replayedDowns.removeValue(forKey: key) }
@@ -572,9 +578,14 @@ final class KeyboardMonitor {
             // Preserve physical hold duration even when events were briefly queued for an edit.
             let now = TimeInterval(event.timestamp) / 1_000_000_000
             let clean = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
+            // A press held during an edit is replayed after a scroll that was not held back,
+            // so a scroll is matched by time: one made while Shift was down makes a chord.
+            lock.lock(); let scroll = lastScroll; lock.unlock()
             if flags.contains(.maskShift) {
                 shiftGesture.press(key: UInt16(key), at: now, clean: clean)
-            } else if shiftGesture.release(key: UInt16(key), at: now, clean: clean) {
+                shiftPressed = event.timestamp
+            } else if shiftGesture.release(key: UInt16(key), at: now, clean: clean),
+                      !(scroll > shiftPressed && scroll <= event.timestamp) {
                 // A deliberate manual action supersedes any pending word analysis.
                 lock.lock(); generation &+= 1; let revision = generation; lock.unlock()
                 let expected = token.isEmpty ? completedToken : snapshot(revision: revision)

@@ -588,7 +588,7 @@ final class KeyboardMonitorStressTests: XCTestCase {
 
     private func scroll(momentum: Int64 = 0) throws -> CGEvent {
         let event = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: 12, wheel3: 0))
-        event.flags = .maskShift
+        event.flags = .maskShift; event.timestamp = tick; tick += 10_000_000
         event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
         return event
     }
@@ -614,6 +614,16 @@ final class KeyboardMonitorStressTests: XCTestCase {
         XCTAssertNotNil(gated.monitor.handleTapEvent(event.type, event))
         XCTAssertEqual(gated.monitor.revision, revision)
         gated.monitor.endGate()
+        // A Shift press held behind an edit is replayed after the scroll that passed it.
+        let held = Rig(layouts: try layouts())
+        XCTAssertTrue(held.monitor.beginGate(revision: held.monitor.revision))
+        held.send(try shift(true)); held.send(try scroll())
+        held.monitor.endGate()
+        await flush(); await flush()
+        held.send(try shift(false))
+        await flush(); await flush()
+        XCTAssertTrue(held.manual.isEmpty)
+        XCTAssertEqual(held.forwarded.count, 3)
     }
 
     private func type(_ rig: Rig, _ events: [CGEvent]) async {
@@ -658,5 +668,59 @@ final class KeyboardMonitorStressTests: XCTestCase {
         let untouched = Rig(layouts: try layouts())
         await type(untouched, try [5, 4, 49].map { try key($0) } + [try shift(true), try shift(false)])
         XCTAssertEqual((untouched.manual.first ?? nil)?.text, "gh")
+    }
+
+    func testBoundaryDroppedDuringAStallNeverOpensAGate() async throws {
+        for pause in [false, true] {
+            let active = try layouts()
+            var now: UInt64 = 5_000_000_000
+            let monitor = KeyboardMonitor(postEvent: { _ in }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                          secureInputEnabled: { false }, captureTimeout: 0.5, clock: { now })
+            monitor.layouts = active; monitor.enabled = true
+            var gates: [Bool] = []
+            monitor.onToken = { [unowned monitor] in gates.append(monitor.beginGate(revision: $0.revision)) }
+            // An edit stalls on main and the tap releases what it held.
+            XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+            XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(0), postAtTap: { _ in }))
+            now += 600_000_000
+            XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(11), postAtTap: { _ in }))
+            // Main is still stalled: another word and its Space, then a key behind that Space,
+            // either held until main runs or released by the tap after another pause.
+            let typed = try [key(0), key(11), key(49)]
+            for event in typed { _ = monitor.handleTapEvent(.keyDown, event, postAtTap: { _ in }) }
+            if pause { now += 600_000_000 }
+            XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(8), postAtTap: { _ in }))
+            await flush()
+            XCTAssertEqual(gates, [false], "the key after this Space already reached the application, pause: \(pause)")
+            XCTAssertFalse(monitor.hasPendingInput)
+            // The next word is corrected as usual.
+            for event in try [key(0), key(49)] { _ = monitor.handleTapEvent(.keyDown, event, postAtTap: { _ in }) }
+            await flush()
+            XCTAssertEqual(gates, [false, true])
+            monitor.endGate()
+        }
+    }
+
+    func testReleaseWaitsForARepeatStillOnItsWayBack() async throws {
+        let active = try layouts()
+        var posted: [CGEvent] = [], forwarded: [Signature] = []
+        let monitor = KeyboardMonitor(postEvent: { posted.append($0) }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false })
+        monitor.layouts = active; monitor.enabled = true
+        let down = try key(17), repeated = try key(17), up = try key(17, down: false)
+        repeated.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        XCTAssertNotNil(monitor.handleTapEvent(.keyDown, down, postAtTap: { forwarded.append(Signature($0)) }))
+        forwarded.append(Signature(down))
+        await flush()
+        XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+        XCTAssertNil(monitor.handleTapEvent(.keyDown, repeated))
+        monitor.endGate()
+        XCTAssertEqual(posted.count, 1, "the repeat is on its way back")
+        XCTAssertNil(monitor.handleTapEvent(.keyUp, up, postAtTap: { forwarded.append(Signature($0)) }), "the release waits for it")
+        XCTAssertNil(monitor.handleTapEvent(.keyDown, posted[0], postAtTap: { forwarded.append(Signature($0)) }))
+        XCTAssertEqual(forwarded.map(\.type), [CGEventType.keyDown, .keyDown, .keyUp].map(\.rawValue))
+        await flush(); await flush()
+        XCTAssertFalse(monitor.hasPendingInput)
+        XCTAssertFalse(monitor.faulted)
     }
 }

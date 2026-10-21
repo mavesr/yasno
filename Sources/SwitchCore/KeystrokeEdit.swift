@@ -14,7 +14,10 @@ public struct KeystrokeEdit: Equatable {
     }
 
     public init?(typed: String, replacement: String, suffix: String = "") {
-        guard typed != replacement, !typed.isEmpty, !replacement.isEmpty else { return nil }
+        guard !typed.isEmpty, !replacement.isEmpty else { return nil }
+        // Another layout writes the same text (Russian and Ukrainian): nothing to retype,
+        // but the edit still succeeds so that a Shift cycle moves on to the next layout.
+        guard typed != replacement else { deletions = 0; insertion = ""; return }
         let common = zip(typed, replacement).prefix { $0 == $1 }.count
         deletions = typed.count - common + suffix.count
         insertion = String(replacement.dropFirst(common)) + suffix

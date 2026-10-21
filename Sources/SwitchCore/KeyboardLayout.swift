@@ -47,26 +47,29 @@ public final class KeyboardLayout {
         for keys in [mainKeys, otherKeys] {
           for shift in [false, true] {
             for key in keys {
-                guard let value = translate(key: key, shift: shift),
+              // Caps Lock has its own table: on a Mac Shift does not invert it, and ß stays ß.
+              for capsLock in [false, true] {
+                guard let value = translate(key: key, shift: shift, capsLock: capsLock),
                       !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
                 else { continue }
                 let position = key | (shift ? 0x100 : 0)
-                forward[position] = value
+                forward[position | (capsLock ? 0x200 : 0)] = value
                 // Prefer the main keyboard, including its shifted symbols, before the keypad.
-                if reverse[value] == nil { reverse[value] = position }
+                if !capsLock, reverse[value] == nil { reverse[value] = position }
+              }
             }
           }
         }
         apostropheGlyph = Self.apostrophe(forward: forward, reverse: reverse)
     }
 
-    private func translate(key: UInt16, shift: Bool) -> String? {
+    private func translate(key: UInt16, shift: Bool, capsLock: Bool) -> String? {
         let layout = UnsafeRawPointer(CFDataGetBytePtr(data)).assumingMemoryBound(to: UCKeyboardLayout.self)
         var dead: UInt32 = 0
         var length = 0
         var buffer = [UniChar](repeating: 0, count: 16)
         let result = UCKeyTranslate(layout, key, UInt16(kUCKeyActionDown),
-            shift ? UInt32(shiftKey >> 8) : 0, UInt32(LMGetKbdType()),
+            UInt32(((shift ? shiftKey : 0) | (capsLock ? alphaLock : 0)) >> 8), UInt32(LMGetKbdType()),
             OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, buffer.count, &length, &buffer)
         guard result == noErr, length > 0 else { return nil }
         return String(utf16CodeUnits: buffer, count: length)
@@ -77,8 +80,8 @@ public final class KeyboardLayout {
         reverse[String(character)].map { $0 & 0xff }
     }
 
-    public func character(key: UInt16, shift: Bool) -> String? {
-        forward[key | (shift ? 0x100 : 0)]
+    public func character(key: UInt16, shift: Bool, capsLock: Bool = false) -> String? {
+        forward[key | (shift ? 0x100 : 0) | (capsLock ? 0x200 : 0)]
     }
 
     /// Computed once at init: convert() asks for it for every apostrophe character.
@@ -97,10 +100,7 @@ public final class KeyboardLayout {
     public func render(_ strokes: [KeyStroke]) -> String? {
         var output = ""
         for stroke in strokes {
-            guard var value = character(key: stroke.key, shift: stroke.shift) else { return nil }
-            if stroke.capsLock, value.contains(where: \.isLetter) {
-                value = stroke.shift ? value.lowercased() : value.uppercased()
-            }
+            guard let value = character(key: stroke.key, shift: stroke.shift, capsLock: stroke.capsLock) else { return nil }
             output += value
         }
         return output

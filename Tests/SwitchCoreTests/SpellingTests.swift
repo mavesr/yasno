@@ -19,6 +19,11 @@ final class SpellingTests: XCTestCase {
                     XCTAssertEqual(detector.suggestCompleted(wrong + suffix, source: source, layouts: active,
                         preferredTargetID: source.id, correctSpelling: true)?.replacement, correct + suffix)
                     XCTAssertNil(detector.suggestCompleted(wrong + suffix, source: source, layouts: active, correctSpelling: false))
+                    // An exception stays one before punctuation.
+                    XCTAssertNil(detector.suggestCompleted(wrong + suffix, source: source, layouts: active,
+                        ignored: [wrong], correctSpelling: true), wrong + suffix)
+                    XCTAssertFalse(detector.maySuggestCompleted(wrong + suffix, source: source, layouts: active,
+                        ignored: [wrong], correctSpelling: true), wrong + suffix)
                 }
                 XCTAssertTrue(detector.maySuggestCompleted(wrong, source: source, layouts: active, correctSpelling: true))
                 XCTAssertNil(detector.suggestCompleted(wrong, source: source, layouts: active, ignored: [wrong], correctSpelling: true))

@@ -539,7 +539,8 @@ final class KeyboardMonitorStressTests: XCTestCase {
         monitor.onRecovered = { recoveries += 1 }
         // The test holds main: words keep arriving and every Space is released by the tap.
         for _ in 0..<3 {
-            XCTAssertNotNil(monitor.handleTapEvent(.keyDown, try key(49), postAtTap: { _ in }))
+            let space = try key(49)
+            XCTAssertNotNil(monitor.handleTapEvent(.keyDown, space, postAtTap: { _ in }))
             XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(0), postAtTap: { _ in }))
             now += 600_000_000
             XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(11), postAtTap: { _ in }))

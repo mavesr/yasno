@@ -72,12 +72,18 @@ final class KeyboardMonitor {
     private var gateOwner: UInt64?
     private var replayLayout: KeyboardLayout? // Snapshot of the selected layout for tap-side release.
     private var recentFailures: [UInt64] = [] // Main only.
+    // A tap-side release or a disabled tap reports to main once. Until failOpen runs, later
+    // releases belong to the same stall and must not count as separate failures.
+    private var failureQueued = false // Under lock.
+    private var faultCount = 0 // Main only; consecutive faults lengthen the cool-down.
+    private var lastFault: UInt64? // Main only.
     private let captureTimeout: UInt64
     private let failureWindow: UInt64 = 60_000_000_000
     private let failureBudget: Int
     private let clock: () -> UInt64
     // Key-up is safe to deliver while AX is editing; delaying it turns a short
     // physical press into a long press and can summon the system accent picker.
+    // Not while a repeat of that key is still queued: it would never be released.
     private var deliveredKeys: Set<Int64> = []
     private var replayedDowns: [Int64: CGEvent] = [:] // Prepared down metadata, under lock.
     private let replaySource = CGEventSource(stateID: .privateState)
@@ -116,7 +122,9 @@ final class KeyboardMonitor {
     /// typing during the replacement cannot overwrite a temporarily selected word.
     func beginGate(revision: UInt64) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard !hasFaulted, generation == revision, !gated, !boundaryCancelled else { return false }
+        // A queued failure report means captured input was already released behind this
+        // revision's back; failOpen resets everything right after.
+        guard !hasFaulted, !failureQueued, generation == revision, !gated, !boundaryCancelled else { return false }
         boundaryReserved = false
         gated = true
         committing = false
@@ -196,7 +204,7 @@ final class KeyboardMonitor {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
             guard let self else { return }
             self.lock.lock()
-            let missing = self.replayInFlight && self.replaySequence == sequence
+            let missing = self.replayInFlight && self.replaySequence == sequence && !self.failureQueued
             self.lock.unlock()
             guard missing else { return }
             self.failOpen()
@@ -218,11 +226,8 @@ final class KeyboardMonitor {
                event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty,
                let layout {
                 let key = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-                let shift = event.flags.contains(.maskShift)
-                if var text = layout.character(key: key, shift: shift) {
-                    if event.flags.contains(.maskAlphaShift), text.contains(where: \.isLetter) {
-                        text = shift ? text.lowercased() : text.uppercased()
-                    }
+                if let text = layout.character(key: key, shift: event.flags.contains(.maskShift),
+                                               capsLock: event.flags.contains(.maskAlphaShift)) {
                     let units = Array(text.utf16)
                     event.keyboardSetUnicodeString(stringLength: units.count, unicodeString: units)
                 }
@@ -237,10 +242,17 @@ final class KeyboardMonitor {
         let now = clock()
         recentFailures = recentFailures.filter { now &- $0 < failureWindow } + [now]
         let permanent = recentFailures.count >= failureBudget
+        if permanent {
+            // A fault long after the previous one starts again from the base cool-down.
+            let recent = lastFault.map { now &- $0 < failureWindow << 6 } ?? false
+            faultCount = recent ? faultCount + 1 : 1
+            lastFault = now
+        }
         lock.lock()
         let remaining = pending
         clearCapture()
         generation &+= 1
+        failureQueued = false
         if permanent { hasFaulted = true }
         let layout = replayLayout, halted = stopped
         lock.unlock()
@@ -249,6 +261,17 @@ final class KeyboardMonitor {
         for event in remaining { prepare(event, tag: Self.editTag, layout: layout); postEvent(event) }
         guard !halted else { return }
         if permanent { onFault?() } else { onRecovered?() }
+    }
+
+    /// Lift a fault once no failure has happened for the failure window, doubling the wait
+    /// after each repeated fault: a bad moment must not require restarting the app.
+    func resumeAfterQuietWindow() -> Bool {
+        dispatchPrecondition(condition: .onQueue(.main))
+        let cooldown = failureWindow << UInt64(min(max(faultCount - 1, 0), 5))
+        guard faulted, let last = recentFailures.last, clock() &- last >= cooldown else { return false }
+        lock.lock(); hasFaulted = false; lock.unlock()
+        recentFailures = []
+        return true
     }
 
     /// Caller holds lock.
@@ -267,13 +290,15 @@ final class KeyboardMonitor {
         let remaining = pending
         clearCapture()
         generation &+= 1
+        let report = !failureQueued
+        failureQueued = true
         let layout = replayLayout
         lock.unlock()
         for event in remaining {
             prepare(event, tag: Self.editTag, layout: layout)
             if let postAtTap { postAtTap(event) } else { postEvent(event) }
         }
-        DispatchQueue.main.async { [weak self] in self?.failOpen() }
+        if report { DispatchQueue.main.async { [weak self] in self?.failOpen() } }
         return true
     }
 
@@ -296,8 +321,11 @@ final class KeyboardMonitor {
         // replay events must then wait too, rather than invalidating that next correction.
         guard tag != Self.editTag, tag != replayTag else { return false }
         lock.lock(); defer { lock.unlock() }
-        if event.type == .keyUp, deliveredKeys.contains(event.getIntegerValueField(.keyboardEventKeycode)) {
-            return false
+        if event.type == .keyUp {
+            let key = event.getIntegerValueField(.keyboardEventKeycode)
+            if deliveredKeys.contains(key), !pending.contains(where: {
+                $0.type == .keyDown && $0.getIntegerValueField(.keyboardEventKeycode) == key
+            }) { return false }
         }
         guard (gated || draining || boundaryReserved), let copy = event.copy() else { return false }
         if (gated || boundaryReserved), event.type != .keyDown && event.type != .keyUp && event.type != .flagsChanged && !committing {
@@ -369,12 +397,30 @@ final class KeyboardMonitor {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             // The system disables taps after sleep, user switching or load. Re-enable here;
             // waiting for main would leave the tap off while the UI queue is busy.
-            lock.lock(); let port = activeTap, halted = stopped; lock.unlock()
+            // Only a disable that interrupted captured input is a failure. Otherwise the keys
+            // typed meanwhile bypassed the tap and the current word is merely stale.
+            lock.lock()
+            let port = activeTap, halted = stopped
+            let capturing = gated || draining || boundaryReserved || replayInFlight || !pending.isEmpty
+            let report = capturing && !failureQueued
+            if report { failureQueued = true }
+            lock.unlock()
             if let port, !halted { CGEvent.tapEnable(tap: port, enable: true) }
-            DispatchQueue.main.async { [weak self] in self?.failOpen() }
+            DispatchQueue.main.async { [weak self] in
+                if report { self?.failOpen() } else { self?.reset() }
+            }
         } else {
             let tag = event.getIntegerValueField(.eventSourceUserData)
             if tag == Self.editTag { return Unmanaged.passUnretained(event) }
+            if type == .scrollWheel {
+                // Observed only so that Shift+scroll is a chord, not a manual Shift tap.
+                // Scrolling is never held, queued or typed; momentum is not the user's action.
+                if event.getIntegerValueField(.scrollWheelEventMomentumPhase) == 0 {
+                    lock.lock(); let pressed = boundaryShiftGesture.isPressed; boundaryShiftGesture.cancel(); lock.unlock()
+                    if pressed { DispatchQueue.main.async { [weak self] in self?.shiftGesture.cancel() } }
+                }
+                return Unmanaged.passUnretained(event)
+            }
             if tag != replayTag, releaseIfStalled(postAtTap: postAtTap), let postAtTap {
                 // Earlier captured input was just posted at this tap; keep this event after it.
                 postAtTap(event); return nil
@@ -443,21 +489,24 @@ final class KeyboardMonitor {
         return Unmanaged.passUnretained(event)
     }
 
+    static let tapEvents: CGEventMask = {
+        let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp,
+                                    .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
+                                    .otherMouseDown, .otherMouseUp, .otherMouseDragged, .scrollWheel]
+        return types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
+    }()
+
     func start() -> Bool {
         dispatchPrecondition(condition: .onQueue(.main))
         guard replaySource != nil, !faulted, !stopped else { return false }
         if tap != nil { return true }
-        let types: [CGEventType] = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp,
-                                  .leftMouseDragged, .rightMouseDown, .rightMouseUp, .rightMouseDragged,
-                                  .otherMouseDown, .otherMouseUp, .otherMouseDragged]
-        let mask = types.reduce(CGEventMask(0)) { $0 | (1 << $1.rawValue) }
         let callback: CGEventTapCallBack = { proxy, type, event, context in
             guard let context else { return Unmanaged.passUnretained(event) }
             return Unmanaged<KeyboardMonitor>.fromOpaque(context).takeUnretainedValue()
                 .handleTapEvent(type, event, postAtTap: { $0.tapPostEvent(proxy) })
         }
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap,
-                options: .defaultTap, eventsOfInterest: mask, callback: callback,
+                options: .defaultTap, eventsOfInterest: Self.tapEvents, callback: callback,
                 userInfo: Unmanaged.passUnretained(self).toOpaque()) else { return false }
         self.tap = tap
         guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
@@ -543,15 +592,28 @@ final class KeyboardMonitor {
             syncApplication(currentPID())
         }
         lock.lock(); generation &+= 1; let revision = generation; lock.unlock()
-        if key != 49 { completedToken = nil }
-        guard flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty,
-              pid > 0 else { token = ""; physicalKeys = []; onCancelAnalysis?(); return }
+        let clean = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
+        let previous = completedToken
+        if key != 49 && !(key == 51 && clean) { completedToken = nil }
+        guard clean, pid > 0 else { token = ""; physicalKeys = []; onCancelAnalysis?(); return }
         let currentID = sourceID
         if key == 51 {
             if !token.isEmpty {
                 token.removeLast()
                 if physicalKeys?.isEmpty == false { physicalKeys?.removeLast() }
                 onProgress?(snapshot(revision: revision))
+            } else if let previous {
+                // Erasing the Space after a word continues that word. A correction resets
+                // the monitor, so completedToken still matches the field here.
+                if previous.suffix.count > 1 {
+                    completedToken = Token(text: previous.text, suffix: String(previous.suffix.dropLast()),
+                        sourceID: previous.sourceID, pid: previous.pid, revision: revision,
+                        liveConverted: previous.liveConverted, physicalKeys: previous.physicalKeys)
+                } else {
+                    completedToken = nil
+                    token = previous.text; physicalKeys = previous.physicalKeys; liveConverted = previous.liveConverted
+                    onProgress?(snapshot(revision: revision))
+                }
             }
             return
         }
@@ -574,11 +636,9 @@ final class KeyboardMonitor {
         // At a session tap Unicode may still reflect the event's source layout, while the
         // application renders it using the selected layout. Decode the physical key ourselves.
         guard let layout = layouts.first(where: { $0.id == currentID }),
-              var string = layout.character(key: UInt16(key), shift: flags.contains(.maskShift))
+              let string = layout.character(key: UInt16(key), shift: flags.contains(.maskShift),
+                                            capsLock: flags.contains(.maskAlphaShift))
         else { token = ""; return }
-        if flags.contains(.maskAlphaShift), string.contains(where: \.isLetter) {
-            string = flags.contains(.maskShift) ? string.lowercased() : string.uppercased()
-        }
         guard !string.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               token.count + string.count <= 512 else { token = ""; return }
         token += string

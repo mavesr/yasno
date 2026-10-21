@@ -17,10 +17,8 @@ struct AccessibleEditor {
 
     /// Chromium and Electron build their web AX tree only on request. Arc has a native
     /// shell, so asking only that shell for its focused element can miss the web field.
-    /// Only AXManualAccessibility is used: AXEnhancedUserInterface is meant for VoiceOver
+    /// AXManualAccessibility is preferred: AXEnhancedUserInterface is meant for VoiceOver
     /// and slows window animations and window managers. Never call this on main.
-    /// Some Chromium shells (the ChatGPT app) refuse AXManualAccessibility and build the
-    /// web tree only for AXEnhancedUserInterface; only those get it.
     private static let preparedLock = NSLock()
     private static var prepared: [pid_t: CFString] = [:]
 
@@ -30,19 +28,28 @@ struct AccessibleEditor {
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
         let running = NSRunningApplication(processIdentifier: pid)
-        var attribute = "AXManualAccessibility" as CFString
-        // Chromium accepts the attribute without always reporting it as settable.
-        let chromium = ["company.thebrowser.Browser", "com.google.Chrome", "com.microsoft.edgemac",
-                        "com.brave.Browser", "org.chromium.Chromium"].contains(running?.bundleIdentifier ?? "")
         var settable = DarwinBoolean(false)
-        let supported = AXUIElementIsAttributeSettable(app, attribute, &settable) == .success && settable.boolValue
-        if !chromium && !supported {
-            guard let url = running?.bundleURL, embedsChromium(url) else { return }
-            attribute = "AXEnhancedUserInterface" as CFString
-        }
+        let supported = AXUIElementIsAttributeSettable(app, "AXManualAccessibility" as CFString, &settable) == .success
+            && settable.boolValue
+        guard let attribute = attribute(bundleID: running?.bundleIdentifier, bundleURL: running?.bundleURL,
+                                        manualSettable: supported) else { return }
         // The shell may report an error even though it switched modes; the mode is what counts.
         _ = AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue)
         preparedLock.lock(); prepared[pid] = attribute; preparedLock.unlock()
+    }
+
+    /// The attribute that makes this application build its web AX tree, or nil for a native one.
+    /// The ChatGPT app refuses AXManualAccessibility and builds the tree only for
+    /// AXEnhancedUserInterface; only the shells listed here get it. A busy Electron app may not
+    /// answer the settable query in time, and AXManualAccessibility is right for every Electron.
+    static func attribute(bundleID: String?, bundleURL: URL?, manualSettable: Bool) -> CFString? {
+        // Chromium accepts the attribute without always reporting it as settable.
+        let chromium = ["company.thebrowser.Browser", "com.google.Chrome", "com.microsoft.edgemac",
+                        "com.brave.Browser", "org.chromium.Chromium"].contains(bundleID ?? "")
+        if chromium || manualSettable { return "AXManualAccessibility" as CFString }
+        guard let bundleURL, embedsChromium(bundleURL) else { return nil }
+        let enhancedOnly = ["com.openai.codex"].contains(bundleID ?? "")
+        return (enhancedOnly ? "AXEnhancedUserInterface" : "AXManualAccessibility") as CFString
     }
 
     /// Chromium keeps its renderer helpers inside the bundle: next to the frameworks in
@@ -128,11 +135,25 @@ struct AccessibleEditor {
 
     /// A text field or area whose value is empty or only invisible placeholders.
     var exposesNoText: Bool {
-        var role: CFTypeRef?, raw: CFTypeRef?
+        var role: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
-        guard [kAXTextAreaRole, kAXTextFieldRole].contains(role as? String ?? ""),
-              AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &raw) == .success,
-              let value = raw as? String, value.utf16.count <= 16 else { return false }
+        return Self.showsNoText(role: role as? String, characterCount: {
+            var raw: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &raw) == .success
+            else { return nil }
+            return (raw as? NSNumber)?.intValue
+        }, value: {
+            var raw: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &raw) == .success else { return nil }
+            return raw as? String
+        })
+    }
+
+    /// The count is asked first: a long document is not copied over AX just to be discarded.
+    static func showsNoText(role: String?, characterCount: () -> Int?, value: () -> String?) -> Bool {
+        guard [kAXTextAreaRole, kAXTextFieldRole].contains(role ?? "") else { return false }
+        if let count = characterCount(), count > 16 { return false }
+        guard let value = value(), value.utf16.count <= 16 else { return false }
         let invisible: Set<Unicode.Scalar> = ["\u{200B}", "\u{200C}", "\u{200D}", "\u{2060}", "\u{FEFF}"]
         return value.unicodeScalars.allSatisfy { invisible.contains($0) || $0.properties.isWhitespace }
     }

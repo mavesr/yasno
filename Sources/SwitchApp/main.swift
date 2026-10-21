@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.statusItem.button?.appearsDisabled = !self.model.monitor.enabled
             self.statusItem.button?.toolTip = "Ясно — \(self.model.status)"
         }
+        // The model refreshed before the menu existed; show its state now, not the defaults.
+        model.onStateChange?()
         let event = NSAppleEventManager.shared().currentAppleEvent
         let launchKind = event?.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue
         let backgroundLaunch = event?.eventID == kAEOpenApplication &&

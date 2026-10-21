@@ -115,6 +115,45 @@ final class ReplacementTransactionTests: XCTestCase {
         }
     }
 
+    func testPrefixReplacementIsNotConfirmedByTheUnchangedWord() {
+        // The untouched word already starts with its replacement.
+        for (text, original, replacement, caret) in [("helloo ", "helloo", "hello", 7), ("helloo", "helloo", "hello", 6),
+                                                      ("приветт ", "приветт", "привет", 8), ("untill ", "untill", "until", 7)] {
+            let editor = Editor(text, caret: CFRange(location: caret, length: 0))
+            editor.confirmsInsertion = false
+            XCTAssertEqual(editor.run(original, replacement: replacement, range: CFRange(location: 0, length: original.utf16.count)),
+                           .failed, text)
+            XCTAssertEqual(editor.value, text)
+            XCTAssertEqual(editor.selection.location, caret)
+            XCTAssertEqual(editor.selection.length, 0)
+        }
+        for (text, original, replacement, caret) in [("helloo ", "helloo", "hello", 7), ("helloo", "helloo", "hello", 6)] {
+            let editor = Editor(text, caret: CFRange(location: caret, length: 0))
+            XCTAssertEqual(editor.run(original, replacement: replacement, range: CFRange(location: 0, length: original.utf16.count)), .success)
+            XCTAssertEqual(editor.value, replacement + text.dropFirst(original.count))
+            XCTAssertEqual(editor.selection.location, caret - 1)
+        }
+    }
+
+    func testDelayedPrefixInsertionIsAwaited() {
+        let editor = Editor("helloo ", caret: CFRange(location: 7, length: 0))
+        editor.confirmsInsertion = false
+        var pending = false
+        editor.onInsert = { pending = true }
+        var environment = editor.environment
+        environment.pause = {
+            editor.clock += 0.01
+            if pending, editor.clock >= 0.02 {
+                editor.value = "hello "; editor.selection = CFRange(location: 5, length: 0); pending = false
+            }
+        }
+        let result = ReplacementTransaction.run(range: CFRange(location: 0, length: 6), expected: "helloo",
+            replacement: "hello", caret: CFRange(location: 7, length: 0), stillValid: { true }, commit: { true }, environment: environment)
+        XCTAssertEqual(result, .success)
+        XCTAssertEqual(editor.value, "hello ")
+        XCTAssertEqual(editor.selection.location, 6)
+    }
+
     func testIdenticalTextDoesNotPostAndInvalidCoordinatesAreRejected() {
         let editor = Editor("ghbdtn", caret: CFRange(location: 6, length: 0))
         XCTAssertEqual(editor.run(replacement: "ghbdtn"), .success)

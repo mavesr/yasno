@@ -37,11 +37,16 @@ enum ReplacementTransaction {
         }
         guard valid(), commit(), e.insert(replacement) else { restoreIfOwned(); return .failed }
         let inserted = CFRange(location: range.location, length: replacement.utf16.count)
+        // A word that starts with its replacement (untill → until) reads as already replaced
+        // before the editor applies anything. Then only the caret after the insertion confirms it.
+        let ambiguous = expected.utf16.starts(with: replacement.utf16)
+        let landed = CFRange(location: range.location + replacement.utf16.count, length: 0)
+        func applied() -> Bool { e.text(inserted) == replacement && (!ambiguous || same(e.selection(), landed)) }
         let editDeadline = min(deadline, e.now() + e.timeout)
         // Focus is re-checked after the wait. Polling it here costs several AX requests to the
         // very renderer that is processing the insertion.
-        while e.text(inserted) != replacement, valid(), e.now() < editDeadline { e.pause() }
-        guard valid(), e.focused(), e.text(inserted) == replacement else { restoreIfOwned(); return .failed }
+        while !applied(), valid(), e.now() < editDeadline { e.pause() }
+        guard valid(), e.focused(), applied() else { restoreIfOwned(); return .failed }
         let delta = replacement.utf16.count - expected.utf16.count
         let end = caret.length == 0 ? caret.location + delta : range.location + replacement.utf16.count
         let finalCaret = CFRange(location: end, length: 0)

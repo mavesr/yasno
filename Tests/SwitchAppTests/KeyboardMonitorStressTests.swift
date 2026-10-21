@@ -281,7 +281,8 @@ final class KeyboardMonitorStressTests: XCTestCase {
         for event in [try key(0, flags: .maskAlphaShift), try key(11, flags: [.maskAlphaShift, .maskShift]),
                       try key(8), try key(51), try key(2), try key(49)] { rig.send(event) }
         await flush()
-        XCTAssertEqual(rig.completed.last?.text, "Abd")
+        // A Mac keyboard layout types capitals with Caps Lock and Shift together.
+        XCTAssertEqual(rig.completed.last?.text, "ABd")
         XCTAssertEqual(rig.completed.last?.suffix, " ")
     }
 
@@ -397,7 +398,11 @@ final class KeyboardMonitorStressTests: XCTestCase {
         monitor.onFault = { faults += 1 }
         monitor.onRecovered = { recoveries += 1 }
         let disabled = try key(0)
-        for _ in 0..<3 { _ = monitor.handleTapEvent(.tapDisabledByTimeout, disabled); await flush() }
+        for _ in 0..<3 {
+            // Only a disable that interrupts captured input is a failure.
+            XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+            _ = monitor.handleTapEvent(.tapDisabledByTimeout, disabled); await flush()
+        }
         XCTAssertEqual(recoveries, 2)
         XCTAssertEqual(faults, 1)
         XCTAssertTrue(monitor.faulted)
@@ -450,5 +455,207 @@ final class KeyboardMonitorStressTests: XCTestCase {
         let typed = try key(11)
         XCTAssertNil(monitor.handleTapEvent(typed.type, typed))
         monitor.endGate(revision: second)
+    }
+
+    func testCapsLockWithShiftReplaysTheLayoutsCapital() async throws {
+        let active = try layouts(), ru = active[1]
+        var posted: [CGEvent] = [], forwarded: [CGEvent] = []
+        let monitor = KeyboardMonitor(postEvent: { posted.append($0) }, currentSourceID: { ru.id },
+            currentPID: { 123 }, secureInputEnabled: { false })
+        monitor.layouts = active; monitor.enabled = true; monitor.syncSource(ru.id)
+        XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+        let flags: CGEventFlags = [.maskShift, .maskAlphaShift]
+        let down = try key(17, flags: flags), up = try key(17, flags: flags, down: false)
+        XCTAssertNil(monitor.handleTapEvent(.keyDown, down))
+        monitor.endGate()
+        XCTAssertNil(monitor.handleTapEvent(.keyUp, up))
+        XCTAssertNil(monitor.handleTapEvent(.keyDown, posted[0], postAtTap: { forwarded.append($0) }))
+        XCTAssertEqual(forwarded.count, 2)
+        for event in forwarded {
+            var count = 0, units = [UniChar](repeating: 0, count: 16)
+            event.keyboardGetUnicodeString(maxStringLength: 16, actualStringLength: &count, unicodeString: &units)
+            XCTAssertEqual(Array(units.prefix(count)), [0x0415]) // RU Е, not е
+        }
+        await flush(); await flush()
+    }
+
+    func testTapDisabledWithNothingCapturedOnlyStartsANewWord() async throws {
+        let rig = Rig(layouts: try layouts())
+        var faults = 0, recoveries = 0
+        rig.monitor.onFault = { faults += 1 }
+        rig.monitor.onRecovered = { recoveries += 1 }
+        rig.send(try key(0)); await flush()
+        for _ in 0..<3 { _ = rig.monitor.handleTapEvent(.tapDisabledByTimeout, try key(0)); await flush() }
+        XCTAssertEqual(faults, 0)
+        XCTAssertEqual(recoveries, 0)
+        XCTAssertFalse(rig.monitor.faulted)
+        XCTAssertTrue(rig.monitor.enabled)
+        rig.send(try key(11)); rig.send(try key(49)); await flush(); await flush()
+        XCTAssertEqual(rig.completed.last?.text, "b", "keys typed while the tap was off are not part of the word")
+    }
+
+    func testFaultLiftsAfterAQuietWindowThatGrowsWithRepeatedFaults() async throws {
+        let active = try layouts()
+        var now: UInt64 = 5_000_000_000
+        let monitor = KeyboardMonitor(postEvent: { _ in }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false }, clock: { now })
+        monitor.layouts = active; monitor.enabled = true
+        let disabled = try key(0)
+        func fault() async {
+            for _ in 0..<3 {
+                XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+                _ = monitor.handleTapEvent(.tapDisabledByTimeout, disabled); await flush()
+            }
+            XCTAssertTrue(monitor.faulted)
+            XCTAssertFalse(monitor.enabled)
+        }
+        await fault()
+        XCTAssertFalse(monitor.resumeAfterQuietWindow())
+        now += 59_000_000_000
+        XCTAssertFalse(monitor.resumeAfterQuietWindow())
+        now += 1_000_000_000
+        XCTAssertTrue(monitor.resumeAfterQuietWindow())
+        XCTAssertFalse(monitor.faulted)
+        XCTAssertFalse(monitor.resumeAfterQuietWindow())
+        monitor.enabled = true
+        XCTAssertTrue(monitor.beginGate(revision: monitor.revision))
+        monitor.endGate()
+        // Another fault soon after waits twice as long.
+        await fault()
+        now += 60_000_000_000
+        XCTAssertFalse(monitor.resumeAfterQuietWindow())
+        now += 60_000_000_000
+        XCTAssertTrue(monitor.resumeAfterQuietWindow())
+    }
+
+    func testOneStalledMainQueueCountsAsOneFailure() async throws {
+        let active = try layouts()
+        var now: UInt64 = 5_000_000_000
+        let monitor = KeyboardMonitor(postEvent: { _ in }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false }, captureTimeout: 0.5, clock: { now })
+        monitor.layouts = active; monitor.enabled = true
+        var faults = 0, recoveries = 0
+        monitor.onFault = { faults += 1 }
+        monitor.onRecovered = { recoveries += 1 }
+        // The test holds main: words keep arriving and every Space is released by the tap.
+        for _ in 0..<3 {
+            XCTAssertNotNil(monitor.handleTapEvent(.keyDown, try key(49), postAtTap: { _ in }))
+            XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(0), postAtTap: { _ in }))
+            now += 600_000_000
+            XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(11), postAtTap: { _ in }))
+        }
+        await flush()
+        XCTAssertEqual(faults, 0)
+        XCTAssertEqual(recoveries, 1)
+        XCTAssertFalse(monitor.faulted)
+        XCTAssertTrue(monitor.enabled)
+    }
+
+    func testReleasedBoundaryDoesNotOpenAGateWhenMainCatchesUp() async throws {
+        let active = try layouts()
+        var now: UInt64 = 5_000_000_000
+        let monitor = KeyboardMonitor(postEvent: { _ in }, currentSourceID: { active[0].id }, currentPID: { 123 },
+                                      secureInputEnabled: { false }, captureTimeout: 0.5, clock: { now })
+        monitor.layouts = active; monitor.enabled = true
+        var gates: [Bool] = []
+        monitor.onToken = { [unowned monitor] in gates.append(monitor.beginGate(revision: $0.revision)) }
+        for event in [try key(0), try key(0, down: false), try key(49)] {
+            _ = monitor.handleTapEvent(event.type, event, postAtTap: { _ in })
+        }
+        XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(11), postAtTap: { _ in }))
+        now += 600_000_000
+        XCTAssertNil(monitor.handleTapEvent(.keyDown, try key(8), postAtTap: { _ in }), "the stalled boundary is released")
+        await flush()
+        XCTAssertEqual(gates, [false], "keys after this Space already reached the application")
+        XCTAssertFalse(monitor.hasPendingInput)
+    }
+
+    func testAutorepeatQueuedDuringAnEditIsReleasedAfterItsRepeat() async throws {
+        let rig = Rig(layouts: try layouts())
+        let down = try key(17), repeated = try key(17), up = try key(17, down: false)
+        repeated.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+        rig.send(down); await flush()
+        XCTAssertTrue(rig.monitor.beginGate(revision: rig.monitor.revision))
+        rig.send(repeated); rig.send(up)
+        rig.monitor.endGate()
+        for _ in 0..<4 { await flush() }
+        XCTAssertEqual(rig.forwarded.map(\.type), [CGEventType.keyDown, .keyDown, .keyUp].map(\.rawValue),
+                       "a key released before its queued repeat would stay pressed")
+        XCTAssertFalse(rig.monitor.hasPendingInput)
+        XCTAssertFalse(rig.monitor.faulted)
+    }
+
+    private func scroll(momentum: Int64 = 0) throws -> CGEvent {
+        let event = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 2, wheel1: 0, wheel2: 12, wheel3: 0))
+        event.flags = .maskShift
+        event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+        return event
+    }
+
+    func testShiftScrollIsAChordAndScrollingIsNeverTypedOrHeld() async throws {
+        XCTAssertNotEqual(KeyboardMonitor.tapEvents & (1 << CGEventType.scrollWheel.rawValue), 0)
+        let rig = Rig(layouts: try layouts())
+        for event in [try shift(true), try scroll(), try shift(false), try key(11), try key(49)] { rig.send(event) }
+        await flush(); await flush()
+        XCTAssertTrue(rig.manual.isEmpty, "Shift+scroll scrolls horizontally; it is not a Shift tap")
+        XCTAssertEqual(rig.completed.last?.text, "b")
+        XCTAssertEqual(rig.forwarded.count, 5)
+        // Momentum after a flick is not the user's action: a Shift tap during it still counts.
+        let coasting = Rig(layouts: try layouts())
+        for event in [try shift(true), try scroll(momentum: 2), try shift(false)] { coasting.send(event) }
+        await flush(); await flush()
+        XCTAssertEqual(coasting.manual.count, 1)
+        // Scrolling during an edit is neither held nor cancels it.
+        let gated = Rig(layouts: try layouts())
+        XCTAssertTrue(gated.monitor.beginGate(revision: gated.monitor.revision))
+        let revision = gated.monitor.revision
+        let event = try scroll()
+        XCTAssertNotNil(gated.monitor.handleTapEvent(event.type, event))
+        XCTAssertEqual(gated.monitor.revision, revision)
+        gated.monitor.endGate()
+    }
+
+    private func type(_ rig: Rig, _ events: [CGEvent]) async {
+        // Flushed one by one: no key waits behind a boundary reservation.
+        for event in events { rig.send(event); await flush(); await flush() }
+    }
+
+    func testBackspaceOverTheSpaceContinuesTheWord() async throws {
+        let rig = Rig(layouts: try layouts())
+        await type(rig, try [17, 4, 49, 51, 14, 49].map { try key($0) })
+        XCTAssertEqual(rig.completed.map(\.text), ["th", "the"])
+        XCTAssertEqual(rig.completed.last?.physicalKeys?.count, 3)
+        // Shift then converts the whole word, not only what was typed after Backspace.
+        let shifted = Rig(layouts: try layouts())
+        await type(shifted, try [5, 4, 49, 51, 11].map { try key($0) } + [try shift(true), try shift(false)])
+        XCTAssertEqual((shifted.manual.last ?? nil)?.text, "ghb")
+    }
+
+    func testBackspaceKeepsSeparateWordsSeparate() async throws {
+        // One of two spaces erased: the next letters are still a new word.
+        let spaces = Rig(layouts: try layouts())
+        await type(spaces, try [17, 4, 49, 49, 51, 14, 49].map { try key($0) })
+        XCTAssertEqual(spaces.completed.map(\.text), ["th", "e"])
+        // Option+Backspace erased the word itself.
+        let option = Rig(layouts: try layouts())
+        await type(option, try [key(17), key(4), key(49), key(51, flags: .maskAlternate), key(51), key(14), key(49)])
+        XCTAssertEqual(option.completed.map(\.text), ["th", "e"])
+        // A correction replaced the word: the field no longer holds what was typed.
+        let corrected = Rig(layouts: try layouts())
+        corrected.monitor.onToken = { [unowned corrected] in corrected.completed.append($0); corrected.monitor.reset() }
+        await type(corrected, try [17, 4, 49, 51, 14, 49].map { try key($0) })
+        XCTAssertEqual(corrected.completed.map(\.text), ["th", "e"])
+    }
+
+    func testShiftAfterACorrectionAsksForTheReceiptNotTheTypedWord() async throws {
+        // A spelling fix keeps the layout, so only the correction's reset forgets the typed word.
+        let corrected = Rig(layouts: try layouts())
+        corrected.monitor.onToken = { [unowned corrected] in corrected.completed.append($0); corrected.monitor.reset() }
+        await type(corrected, try [5, 4, 49].map { try key($0) } + [try shift(true), try shift(false)])
+        XCTAssertEqual(corrected.manual.count, 1)
+        XCTAssertNil(try XCTUnwrap(corrected.manual.first))
+        let untouched = Rig(layouts: try layouts())
+        await type(untouched, try [5, 4, 49].map { try key($0) } + [try shift(true), try shift(false)])
+        XCTAssertEqual((untouched.manual.first ?? nil)?.text, "gh")
     }
 }

@@ -624,6 +624,25 @@ final class KeyboardMonitorStressTests: XCTestCase {
         await flush(); await flush()
         XCTAssertTrue(held.manual.isEmpty)
         XCTAssertEqual(held.forwarded.count, 3)
+        // Fingers still moving after the release, before main has seen it.
+        let continued = Rig(layouts: try layouts())
+        for event in [try shift(true), try scroll(), try shift(false), try scroll()] { continued.send(event) }
+        await flush(); await flush()
+        XCTAssertTrue(continued.manual.isEmpty)
+        // The same with the press and release both held behind an edit.
+        let behind = Rig(layouts: try layouts())
+        XCTAssertTrue(behind.monitor.beginGate(revision: behind.monitor.revision))
+        for event in [try shift(true), try scroll(), try shift(false), try scroll()] { behind.send(event) }
+        behind.monitor.endGate()
+        for _ in 0..<4 { await flush() }
+        XCTAssertTrue(behind.manual.isEmpty)
+        XCTAssertEqual(behind.forwarded.count, 4)
+        XCTAssertFalse(behind.monitor.hasPendingInput)
+        // A scroll before the press does not make the next Shift tap a chord.
+        let before = Rig(layouts: try layouts())
+        for event in [try scroll(), try shift(true), try shift(false)] { before.send(event) }
+        await flush(); await flush()
+        XCTAssertEqual(before.manual.count, 1)
     }
 
     private func type(_ rig: Rig, _ events: [CGEvent]) async {
@@ -693,6 +712,9 @@ final class KeyboardMonitorStressTests: XCTestCase {
             await flush()
             XCTAssertEqual(gates, [false], "the key after this Space already reached the application, pause: \(pause)")
             XCTAssertFalse(monitor.hasPendingInput)
+            // Refusing that Space does not refuse the next word's correction while it is typed.
+            XCTAssertTrue(monitor.beginGate(revision: monitor.revision), "pause: \(pause)")
+            monitor.endGate()
             // The next word is corrected as usual.
             for event in try [key(0), key(49)] { _ = monitor.handleTapEvent(.keyDown, event, postAtTap: { _ in }) }
             await flush()

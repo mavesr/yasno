@@ -53,8 +53,8 @@ final class KeyboardMonitor {
     private var sourceID = "" { didSet { publishReplayLayout() } }
     private var pid: pid_t = 0
     private var shiftGesture = ShiftTapGesture()
-    private var shiftPressed: UInt64 = 0 // Main only: timestamp of the last Shift press.
-    private var lastScroll: UInt64 = 0 // Under lock: timestamp of the last scroll the user made.
+    private var scrolledSinceShift = false // Under lock: the user scrolled after the last physical Shift press.
+    private var shiftChords: [UInt64] = [] // Under lock: timestamps of recent Shift releases that ended a Shift+scroll.
     private var boundaryShiftGesture = ShiftTapGesture() // Tap-side reservation only; under lock.
     private let lock = NSLock()
     private var generation: UInt64 = 0
@@ -63,6 +63,7 @@ final class KeyboardMonitor {
     // blocked UI thread lets later keys reach a temporarily selected word.
     private var boundaryReserved = false
     private var boundaryCancelled = false
+    private var boundaryID: UInt64 = 0 // The latest reservation; its main block clears its own cancellation.
     private var committing = false
     private var draining = false
     private var replayInFlight = false
@@ -345,12 +346,12 @@ final class KeyboardMonitor {
         return true
     }
 
-    private func reserveBoundary(_ event: CGEvent) -> Bool {
+    private func reserveBoundary(_ event: CGEvent) -> UInt64? {
         let tag = event.getIntegerValueField(.eventSourceUserData)
-        guard tag != Self.editTag, tag != replayTag else { return false }
+        guard tag != Self.editTag, tag != replayTag else { return nil }
         let key = event.getIntegerValueField(.keyboardEventKeycode)
         lock.lock(); defer { lock.unlock() }
-        guard acceptingInput, !hasFaulted else { return false }
+        guard acceptingInput, !hasFaulted else { return nil }
         let clean = event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
         var shiftTap = false
         if event.type == .flagsChanged {
@@ -361,17 +362,19 @@ final class KeyboardMonitor {
             } else { boundaryShiftGesture.cancel() }
         } else if event.type != .keyUp { boundaryShiftGesture.cancel() }
         let boundary = event.type == .keyDown && key == 49 && clean
-        guard boundary || shiftTap, !gated, !draining, !boundaryReserved else { return false }
-        boundaryReserved = true; boundaryCancelled = false
+        guard boundary || shiftTap, !gated, !draining, !boundaryReserved else { return nil }
+        boundaryReserved = true; boundaryCancelled = false; boundaryID &+= 1
         lastProgress = clock()
-        return true
+        return boundaryID
     }
 
-    private func finishBoundaryObservation() {
+    private func finishBoundaryObservation(_ id: UInt64) {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock()
-        let unused = boundaryReserved
-        if unused { boundaryReserved = false; boundaryCancelled = false; draining = !hasFaulted }
+        let unused = boundaryReserved && boundaryID == id
+        if unused { boundaryReserved = false; draining = !hasFaulted }
+        // A dropped reservation only refuses its own boundary, not the next word's live correction.
+        if boundaryID == id { boundaryCancelled = false }
         lastProgress = clock()
         lock.unlock()
         if unused { drainNext() }
@@ -423,9 +426,17 @@ final class KeyboardMonitor {
                 // Observed only so that Shift+scroll is a chord, not a manual Shift tap.
                 // Scrolling is never held, queued or typed; momentum is not the user's action.
                 if event.getIntegerValueField(.scrollWheelEventMomentumPhase) == 0 {
-                    lock.lock(); boundaryShiftGesture.cancel(); lastScroll = event.timestamp; lock.unlock()
+                    lock.lock(); boundaryShiftGesture.cancel(); scrolledSinceShift = true; lock.unlock()
                 }
                 return Unmanaged.passUnretained(event)
+            }
+            if type == .flagsChanged, tag != replayTag, [56, 60].contains(event.getIntegerValueField(.keyboardEventKeycode)) {
+                // Marked here, in arrival order: a scroll that continues after the release, or
+                // a press and release held behind an edit, reach main only later.
+                lock.lock()
+                if event.flags.contains(.maskShift) { scrolledSinceShift = false }
+                else if scrolledSinceShift { shiftChords = shiftChords.suffix(7) + [event.timestamp] }
+                lock.unlock()
             }
             if tag != replayTag, releaseIfStalled(postAtTap: postAtTap), let postAtTap {
                 // Earlier captured input was just posted at this tap; keep this event after it.
@@ -459,14 +470,14 @@ final class KeyboardMonitor {
                 DispatchQueue.main.async { [weak self] in self?.reset() }
                 return Unmanaged.passUnretained(event)
             }
-            let reserved = reserveBoundary(event)
+            let reservation = reserveBoundary(event)
             // No AX, TIS, application lookup or main-queue wait is allowed here.
             // Browser/UI IPC can otherwise stall the tap and lose hardware input.
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.receive(type, copy)
                 if copy.getIntegerValueField(.eventSourceUserData) == self.replayTag { self.replayDelivered() }
-                if reserved { self.finishBoundaryObservation() }
+                if let reservation { self.finishBoundaryObservation(reservation) }
             }
             // A physical release can arrive after drainNext posted a down but
             // before that down re-enters the tap. It is then already queued here.
@@ -578,14 +589,11 @@ final class KeyboardMonitor {
             // Preserve physical hold duration even when events were briefly queued for an edit.
             let now = TimeInterval(event.timestamp) / 1_000_000_000
             let clean = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
-            // A press held during an edit is replayed after a scroll that was not held back,
-            // so a scroll is matched by time: one made while Shift was down makes a chord.
-            lock.lock(); let scroll = lastScroll; lock.unlock()
+            // Scrolls never reach main: the tap marks each release that ended a Shift+scroll.
+            lock.lock(); let chord = shiftChords.contains(event.timestamp); lock.unlock()
             if flags.contains(.maskShift) {
                 shiftGesture.press(key: UInt16(key), at: now, clean: clean)
-                shiftPressed = event.timestamp
-            } else if shiftGesture.release(key: UInt16(key), at: now, clean: clean),
-                      !(scroll > shiftPressed && scroll <= event.timestamp) {
+            } else if shiftGesture.release(key: UInt16(key), at: now, clean: clean), !chord {
                 // A deliberate manual action supersedes any pending word analysis.
                 lock.lock(); generation &+= 1; let revision = generation; lock.unlock()
                 let expected = token.isEmpty ? completedToken : snapshot(revision: revision)

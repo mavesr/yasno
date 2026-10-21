@@ -19,33 +19,53 @@ struct AccessibleEditor {
     /// shell, so asking only that shell for its focused element can miss the web field.
     /// Only AXManualAccessibility is used: AXEnhancedUserInterface is meant for VoiceOver
     /// and slows window animations and window managers. Never call this on main.
+    /// Some Chromium shells (the ChatGPT app) refuse AXManualAccessibility and build the
+    /// web tree only for AXEnhancedUserInterface; only those get it.
     private static let preparedLock = NSLock()
-    private static var prepared: Set<pid_t> = []
+    private static var prepared: [pid_t: CFString] = [:]
 
     static func prepareApplication(pid: pid_t) {
-        preparedLock.lock(); let known = prepared.contains(pid); preparedLock.unlock()
+        preparedLock.lock(); let known = prepared[pid] != nil; preparedLock.unlock()
         guard !known, !blind else { return }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
-        let attribute = "AXManualAccessibility" as CFString
+        let running = NSRunningApplication(processIdentifier: pid)
+        var attribute = "AXManualAccessibility" as CFString
         // Chromium accepts the attribute without always reporting it as settable.
         let chromium = ["company.thebrowser.Browser", "com.google.Chrome", "com.microsoft.edgemac",
-                        "com.brave.Browser", "org.chromium.Chromium"].contains(
-                            NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? "")
+                        "com.brave.Browser", "org.chromium.Chromium"].contains(running?.bundleIdentifier ?? "")
         var settable = DarwinBoolean(false)
         let supported = AXUIElementIsAttributeSettable(app, attribute, &settable) == .success && settable.boolValue
-        guard chromium || supported else { return }
+        if !chromium && !supported {
+            guard let url = running?.bundleURL, embedsChromium(url) else { return }
+            attribute = "AXEnhancedUserInterface" as CFString
+        }
+        // The shell may report an error even though it switched modes; the mode is what counts.
         _ = AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue)
-        preparedLock.lock(); prepared.insert(pid); preparedLock.unlock()
+        preparedLock.lock(); prepared[pid] = attribute; preparedLock.unlock()
+    }
+
+    /// Chromium keeps its renderer helpers inside the bundle: next to the frameworks in
+    /// Electron, inside the Chromium framework in Chrome-style shells.
+    static func embedsChromium(_ bundle: URL) -> Bool {
+        let files = FileManager.default
+        let frameworks = bundle.appendingPathComponent("Contents/Frameworks")
+        guard let entries = try? files.contentsOfDirectory(atPath: frameworks.path) else { return false }
+        func hasRenderer(_ names: [String]) -> Bool { names.contains { $0.hasSuffix("(Renderer).app") } }
+        if hasRenderer(entries) { return true }
+        return entries.filter { $0.hasSuffix(".framework") }.contains { framework in
+            let helpers = frameworks.appendingPathComponent(framework).appendingPathComponent("Helpers")
+            return hasRenderer((try? files.contentsOfDirectory(atPath: helpers.path)) ?? [])
+        }
     }
 
     /// Return applications to their default accessibility mode at exit.
     static func releasePreparedApplications() {
-        preparedLock.lock(); let pids = prepared; prepared = []; preparedLock.unlock()
-        for pid in pids where NSRunningApplication(processIdentifier: pid) != nil {
+        preparedLock.lock(); let apps = prepared; prepared = [:]; preparedLock.unlock()
+        for (pid, attribute) in apps where NSRunningApplication(processIdentifier: pid) != nil {
             let app = AXUIElementCreateApplication(pid)
             AXUIElementSetMessagingTimeout(app, 0.12)
-            _ = AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanFalse)
+            _ = AXUIElementSetAttributeValue(app, attribute, kCFBooleanFalse)
         }
     }
 

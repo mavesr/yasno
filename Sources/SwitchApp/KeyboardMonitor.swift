@@ -101,7 +101,7 @@ final class KeyboardMonitor {
 
     init(postEvent: @escaping (CGEvent) -> Void = { $0.post(tap: .cgSessionEventTap) },
          currentSourceID: @escaping () -> String = KeyboardLayout.currentID,
-         currentPID: @escaping () -> pid_t = { NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0 },
+         currentPID: @escaping () -> pid_t = { AccessibleEditor.typingApplication()?.processIdentifier ?? 0 },
          secureInputEnabled: @escaping () -> Bool = { IsSecureEventInputEnabled() },
          captureTimeout: TimeInterval = 1.0, failureBudget: Int = 3,
          clock: @escaping () -> UInt64 = { DispatchTime.now().uptimeNanoseconds }) {

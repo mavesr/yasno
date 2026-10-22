@@ -117,7 +117,7 @@ final class AppModel: ObservableObject {
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+            let pid = AccessibleEditor.typingApplication()?.processIdentifier ?? 0
             if pid != self.activePID { self.activePID = pid; self.monitor.syncApplication(pid) }
             self.refresh()
         }
@@ -205,7 +205,7 @@ final class AppModel: ObservableObject {
         guard !programmatic,
               let layout = layouts.first(where: { $0.id == id }),
               layout.languages.contains(where: { $0 == .russian || $0 == .ukrainian }),
-              let bundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return }
+              let bundle = AccessibleEditor.typingApplication()?.bundleIdentifier else { return }
         preferred[bundle] = id
         globalPreferred = id
         UserDefaults.standard.set(preferred, forKey: "preferredLayouts")
@@ -219,7 +219,7 @@ final class AppModel: ObservableObject {
         update(\.inputMonitoring, CGPreflightListenEventAccess())
         update(\.secureInput, IsSecureEventInputEnabled())
         if keyboardType != UInt32(LMGetKbdType()) { reloadLayouts() }
-        let app = NSWorkspace.shared.frontmostApplication
+        let app = AccessibleEditor.typingApplication()
         // Login item status is an XPC query and only visible in our own window.
         if app?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
             update(\.loginEnabled, SMAppService.mainApp.status == .enabled)
@@ -365,7 +365,7 @@ final class AppModel: ObservableObject {
     }
 
     private func request(for token: KeyboardMonitor.Token, source: KeyboardLayout, whileTyping: Bool) -> CorrectionRequest {
-        let bundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
+        let bundle = AccessibleEditor.typingApplication()?.bundleIdentifier ?? ""
         return CorrectionRequest(text: token.text, source: source, layouts: layouts, ignored: ignored,
                                  preferredTargetID: preferred[bundle] ?? globalPreferred,
                                  correctSpelling: correctSpelling, whileTyping: whileTyping,
@@ -477,7 +477,7 @@ final class AppModel: ObservableObject {
                               keystrokes: keystrokeSuffix.map { ($0, monitor.revision) })
             // The transaction confirmed focus just before returning. Repeating the full AX
             // focus lookup here would hold queued input on main for no extra safety.
-            if NSWorkspace.shared.frontmostApplication?.processIdentifier == editor.pid {
+            if AccessibleEditor.typingApplication()?.processIdentifier == editor.pid {
                 if cycle != nil {
                     guard selectManually(target, bundleID: NSRunningApplication(processIdentifier: editor.pid)?.bundleIdentifier) else { return }
                 } else if !selectLayout(target) { detail = "Текст исправлен, но раскладку переключить не удалось."; return }
@@ -578,7 +578,7 @@ final class AppModel: ObservableObject {
 
     private func manual(after expectedToken: KeyboardMonitor.Token?) {
         cancelTypingTask()
-        guard monitor.enabled, let app = NSWorkspace.shared.frontmostApplication else { return }
+        guard monitor.enabled, let app = AccessibleEditor.typingApplication() else { return }
         sourceChanged()
         let revision = monitor.revision, layouts = self.layouts, receipt = self.receipt
         let sourceID = KeyboardLayout.currentID()
@@ -596,7 +596,7 @@ final class AppModel: ObservableObject {
                 guard expectedToken == nil else { return }
                 DispatchQueue.main.async {
                     guard self.monitor.revision == revision, self.monitor.enabled, !IsSecureEventInputEnabled(),
-                          NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return }
+                          AccessibleEditor.typingApplication()?.processIdentifier == app.processIdentifier else { return }
                     self.switchLayoutOnly(sourceID: sourceID, layouts: layouts, bundleID: app.bundleIdentifier)
                 }
             }

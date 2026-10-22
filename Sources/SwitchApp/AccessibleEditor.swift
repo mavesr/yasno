@@ -76,8 +76,29 @@ struct AccessibleEditor {
         }
     }
 
+    /// Spotlight (Siri on newer macOS) takes the keyboard without becoming the frontmost
+    /// application: the menu bar still names the application below, but keys reach its field.
+    static let overlayBundleIDs: Set<String> = ["com.apple.Spotlight", "com.apple.campo"]
+
+    /// The application that receives typed keys: an open overlay, else the frontmost one.
+    static func typingApplication() -> NSRunningApplication? {
+        let front = NSWorkspace.shared.frontmostApplication
+        guard !blind else { return front }
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.05)
+        var raw: CFTypeRef?
+        var pid: pid_t = 0
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedApplicationAttribute as CFString, &raw) == .success,
+              let raw, CFGetTypeID(raw) == AXUIElementGetTypeID(),
+              AXUIElementGetPid(unsafeBitCast(raw, to: AXUIElement.self), &pid) == .success,
+              pid != front?.processIdentifier,
+              let overlay = NSRunningApplication(processIdentifier: pid),
+              overlayBundleIDs.contains(overlay.bundleIdentifier ?? "") else { return front }
+        return overlay
+    }
+
     static func focused(pid: pid_t) -> AccessibleEditor? {
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return nil }
+        guard typingApplication()?.processIdentifier == pid else { return nil }
         let app = AXUIElementCreateApplication(pid)
         // No field can be inspected: the application stands in for its focused field.
         if blind { return AccessibleEditor(element: app, pid: pid) }
@@ -97,7 +118,7 @@ struct AccessibleEditor {
         if let global, belongsToApplication(global, pid: pid) { element = global }
         else if let local = focusedElement(of: app) { element = local }
         else { return nil }
-        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return nil }
+        guard typingApplication()?.processIdentifier == pid else { return nil }
         AXUIElementSetMessagingTimeout(element, 0.12)
         var subrole: CFTypeRef?
         AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subrole)

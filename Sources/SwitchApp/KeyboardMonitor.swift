@@ -361,7 +361,7 @@ final class KeyboardMonitor {
                 else { shiftTap = boundaryShiftGesture.release(key: UInt16(key), at: time, clean: clean) }
             } else { boundaryShiftGesture.cancel() }
         } else if event.type != .keyUp { boundaryShiftGesture.cancel() }
-        let boundary = event.type == .keyDown && key == 49 && clean
+        let boundary = event.type == .keyDown && (key == 49 || key == 48) && clean
         guard boundary || shiftTap, !gated, !draining, !boundaryReserved else { return nil }
         boundaryReserved = true; boundaryCancelled = false; boundaryID &+= 1
         lastProgress = clock()
@@ -471,6 +471,18 @@ final class KeyboardMonitor {
                 return Unmanaged.passUnretained(event)
             }
             let reservation = reserveBoundary(event)
+            // Tab leaves the field. Hold it until the word before it is finished, or the
+            // edit would land in the next field.
+            if reservation != nil, type == .keyDown, event.getIntegerValueField(.keyboardEventKeycode) == 48,
+               let held = event.copy() {
+                lock.lock(); deliveredKeys.remove(48); pending.append(held); lock.unlock()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, let reservation else { return }
+                    self.receive(type, copy)
+                    self.finishBoundaryObservation(reservation)
+                }
+                return nil
+            }
             // No AX, TIS, application lookup or main-queue wait is allowed here.
             // Browser/UI IPC can otherwise stall the tap and lose hardware input.
             DispatchQueue.main.async { [weak self] in
@@ -635,6 +647,12 @@ final class KeyboardMonitor {
                 }
             }
             return
+        }
+        // A word followed by Tab is finished, like one followed by Space; Tab itself is held.
+        if key == 48, !token.isEmpty {
+            let completed = snapshot(revision: revision)
+            token = ""; physicalKeys = []; liveConverted = false
+            onToken?(completed); return
         }
         // Enter may send a message immediately. Never attempt a delayed edit after sending.
         if key == 36 || key == 76 || key == 48 || key == 53 || (123...126).contains(key) {

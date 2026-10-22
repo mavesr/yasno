@@ -287,12 +287,18 @@ final class KeyboardMonitorStressTests: XCTestCase {
     }
 
     func testNavigationPasteAndMouseDiscardStaleTokens() async throws {
-        for code: UInt16 in [36, 76, 48, 53, 123, 124, 125, 126] {
+        for code: UInt16 in [36, 76, 53, 123, 124, 125, 126] {
             let rig = Rig(layouts: try layouts())
             rig.send(try key(5)); rig.send(try key(code)); rig.send(try key(49))
             await flush(); await flush()
             XCTAssertTrue(rig.completed.isEmpty, "navigation \(code)")
         }
+        // Tab finishes the word instead of discarding it.
+        let tabbed = Rig(layouts: try layouts())
+        tabbed.send(try key(5)); tabbed.send(try key(48)); tabbed.send(try key(49))
+        await flush(); await flush()
+        XCTAssertEqual(tabbed.completed.map(\.text), ["g"])
+        XCTAssertEqual(tabbed.completed.first?.suffix, "")
         for flags: CGEventFlags in [.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn] {
             let rig = Rig(layouts: try layouts())
             rig.send(try key(5)); rig.send(try key(9, flags: flags)); rig.send(try key(49))

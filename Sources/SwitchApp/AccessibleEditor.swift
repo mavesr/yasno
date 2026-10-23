@@ -23,10 +23,19 @@ struct AccessibleEditor {
     private static var prepared: [pid_t: CFString] = [:]
 
     static func prepareApplication(pid: pid_t) {
-        preparedLock.lock(); let known = prepared[pid] != nil; preparedLock.unlock()
-        guard !known, !blind else { return }
+        guard !blind else { return }
+        preparedLock.lock(); let known = prepared[pid]; preparedLock.unlock()
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.12)
+        // Another copy of Ясно (a test build) turns the mode off when it quits, and the field
+        // disappears again: an application prepared earlier is checked each time it comes forward.
+        if let known {
+            var value: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(app, known, &value) == .success,
+                  (value as? Bool) == false else { return }
+            _ = AXUIElementSetAttributeValue(app, known, kCFBooleanTrue)
+            return
+        }
         let running = NSRunningApplication(processIdentifier: pid)
         var settable = DarwinBoolean(false)
         let supported = AXUIElementIsAttributeSettable(app, "AXManualAccessibility" as CFString, &settable) == .success

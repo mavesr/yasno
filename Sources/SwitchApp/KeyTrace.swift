@@ -2,14 +2,15 @@ import Cocoa
 import SwitchCore
 
 /// `--trace-keys`: for 30 seconds, write every key event the three tap locations see to
-/// ~/Desktop/Yasno-keys.txt. Only on request, for input that does not reach the monitor
-/// (Screen Sharing, remote desktops). The file holds the typed characters; delete it after use.
+/// ~/Library/Logs/Yasno-keys.txt and show it in Finder; the Desktop needs a folder permission
+/// the app may lack. Only on request, for input that does not reach the monitor (Screen
+/// Sharing, remote desktops). The file holds the typed characters; delete it after use.
 enum KeyTrace {
     private static var output: FileHandle?
     private static var taps: [CFMachPort] = []
 
     static func run(seconds: TimeInterval = 30) {
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop/Yasno-keys.txt")
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Yasno-keys.txt")
         FileManager.default.createFile(atPath: url.path, contents: nil)
         output = try? FileHandle(forWritingTo: url)
         write("Yasno \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] ?? "?") trace; layout \(KeyboardLayout.currentID())")
@@ -34,6 +35,7 @@ enum KeyTrace {
         CFRunLoopRunInMode(.defaultMode, seconds, false)
         write("Done.")
         try? output?.close()
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private static func record(_ type: CGEventType, _ event: CGEvent, at location: String) {

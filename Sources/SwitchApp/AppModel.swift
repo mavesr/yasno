@@ -448,10 +448,12 @@ final class AppModel: ObservableObject {
     private func correctByKeystrokes(_ token: KeyboardMonitor.Token, request: CorrectionRequest, source: KeyboardLayout,
                                      editor: AccessibleEditor, whileTyping: Bool) {
         guard let suggestion = detector.correction(request, context: ""),
-              let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source, blind: AccessibleEditor.blind),
+              let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source,
+                                            blind: AccessibleEditor.blind || editor.showsRemoteScreen),
               monitor.revision == token.revision, !IsSecureEventInputEnabled(),
               monitor.commitGate(revision: token.revision) else { return }
-        let result: AccessibleEditor.EditResult = KeyboardMonitor.typeKeystrokes(edit) ? .success : .failed
+        let result: AccessibleEditor.EditResult =
+            KeyboardMonitor.typeKeystrokes(edit, characterPerEvent: editor.showsRemoteScreen) ? .success : .failed
         DispatchQueue.main.async {
             self.handle(result, editor: editor, range: CFRange(), caret: CFRange(), original: token.text,
                         replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target,
@@ -517,7 +519,7 @@ final class AppModel: ObservableObject {
         func type(_ edit: KeystrokeEdit?) -> Bool {
             guard let edit, monitor.revision == revision, !IsSecureEventInputEnabled(),
                   monitor.commitGate(revision: revision) else { return false }
-            return KeyboardMonitor.typeKeystrokes(edit)
+            return KeyboardMonitor.typeKeystrokes(edit, characterPerEvent: editor.showsRemoteScreen)
         }
         if let receipt, let keystrokes = receipt.keystrokes, CFEqual(receipt.editor.element, editor.element),
            expectedToken.map({ $0.pid == editor.pid && [receipt.original, receipt.replacement].contains($0.text) })

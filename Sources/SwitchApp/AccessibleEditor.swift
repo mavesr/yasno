@@ -110,7 +110,7 @@ struct AccessibleEditor {
         guard typingApplication()?.processIdentifier == pid else { return nil }
         let app = AXUIElementCreateApplication(pid)
         // No field can be inspected: the application stands in for its focused field.
-        if blind { return AccessibleEditor(element: app, pid: pid) }
+        if blind || showsRemoteScreen(pid: pid) { return AccessibleEditor(element: app, pid: pid) }
         AXUIElementSetMessagingTimeout(app, 0.12)
         func focusedElement(of root: AXUIElement) -> AXUIElement? {
             var raw: CFTypeRef?
@@ -143,6 +143,17 @@ struct AccessibleEditor {
               let ownerURL = NSRunningApplication(processIdentifier: owner)?.bundleURL?.standardizedFileURL else { return false }
         return ownerURL.path.hasPrefix(appURL.path + "/")
     }
+
+    /// Screen Sharing shows another Mac. Nothing in it can be read here, and the keys reach the
+    /// other Mac as the characters this Mac's layout gives them: the word is corrected here with
+    /// keystrokes, and the layout selected here decides what is typed there.
+    static let remoteScreenBundleIDs: Set<String> = ["com.apple.ScreenSharing"]
+
+    static func showsRemoteScreen(pid: pid_t) -> Bool {
+        remoteScreenBundleIDs.contains(NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? "")
+    }
+
+    var showsRemoteScreen: Bool { Self.showsRemoteScreen(pid: pid) }
 
     /// Open and Save panels run in an AppKit service. Their fields appear in the host
     /// application's AX tree, but keys posted to the host never reach them.
@@ -191,7 +202,7 @@ struct AccessibleEditor {
     /// holds only zero-width placeholders, never the text, so it can be edited only with
     /// keystrokes. Its frame carries a known class, recognised without waiting for a caret.
     var isCanvasTypingTarget: Bool {
-        if Self.blind { return true }
+        if Self.blind || showsRemoteScreen { return true }
         guard exposesNoText else { return false }
         var current = element
         for _ in 0..<3 {

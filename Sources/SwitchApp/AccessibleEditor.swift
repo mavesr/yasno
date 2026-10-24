@@ -144,6 +144,39 @@ struct AccessibleEditor {
         return ownerURL.path.hasPrefix(appURL.path + "/")
     }
 
+    /// Open and Save panels run in an AppKit service. Their fields appear in the host
+    /// application's AX tree, but keys posted to the host never reach them.
+    static let panelServiceBundleIDs: Set<String> = ["com.apple.appkit.xpc.openAndSavePanelService"]
+
+    /// The process that takes keys for this field: the panel service whose window lies on
+    /// top under the field, else the application itself.
+    private var inputPID: pid_t {
+        var raw: CFTypeRef?
+        var origin = CGPoint.zero, size = CGSize.zero
+        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &raw) == .success,
+              let position = raw, CFGetTypeID(position) == AXValueGetTypeID(),
+              AXValueGetValue(unsafeBitCast(position, to: AXValue.self), .cgPoint, &origin),
+              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &raw) == .success,
+              let extent = raw, CFGetTypeID(extent) == AXValueGetTypeID(),
+              AXValueGetValue(unsafeBitCast(extent, to: AXValue.self), .cgSize, &size),
+              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                       kCGNullWindowID) as? [[String: Any]] else { return pid }
+        return Self.inputPID(at: CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2), pid: pid,
+                             windows: windows) { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
+    }
+
+    /// Windows come front to back; only the topmost ordinary window under the point counts.
+    static func inputPID(at point: CGPoint, pid: pid_t, windows: [[String: Any]],
+                         bundleID: (pid_t) -> String?) -> pid_t {
+        for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
+            guard let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds), frame.contains(point),
+                  let owner = window[kCGWindowOwnerPID as String] as? pid_t else { continue }
+            return owner != pid && panelServiceBundleIDs.contains(bundleID(owner) ?? "") ? owner : pid
+        }
+        return pid
+    }
+
     /// Google Docs and Slides draw the document themselves. Keys go to a hidden field that
     /// holds only zero-width placeholders, never the text, so it can be edited only with
     /// keystrokes. Its frame carries a known class, recognised without waiting for a caret.
@@ -266,10 +299,11 @@ struct AccessibleEditor {
     func replace(range: CFRange, expected: String, replacement: String,
                  caret: CFRange, stillValid: () -> Bool, commit: () -> Bool,
                  deadline: TimeInterval? = nil) -> EditResult {
-        ReplacementTransaction.run(range: range, expected: expected, replacement: replacement, caret: caret,
+        let inputPID = inputPID
+        return ReplacementTransaction.run(range: range, expected: expected, replacement: replacement, caret: caret,
             stillValid: stillValid, commit: commit, environment: .init(
                 selection: { selection }, text: { text(in: $0) }, focused: { isFocused() },
                 canSelect: { canSelect }, select: { setSelection($0) },
-                insert: { KeyboardMonitor.insertUnicode($0, pid: pid) }, pause: Self.backoff(), deadline: deadline))
+                insert: { KeyboardMonitor.insertUnicode($0, pid: inputPID) }, pause: Self.backoff(), deadline: deadline))
     }
 }

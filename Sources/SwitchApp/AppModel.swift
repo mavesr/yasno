@@ -2,6 +2,7 @@ import Cocoa
 import Carbon
 import SwiftUI
 import ServiceManagement
+import os
 import SwitchCore
 
 final class AppModel: ObservableObject {
@@ -22,6 +23,9 @@ final class AppModel: ObservableObject {
     // Loaded on the worker (about 0.25 s of dictionary parsing), never on main at launch.
     // Only the serial worker touches it, so the lazy initialization is not shared.
     private(set) lazy var detector = Detector()
+    // Set by the worker once the dictionaries are parsed. Until then a Space must not open a
+    // gate that waits behind the load (0.25 s here, longer on a busy disk at login).
+    private let detectorLoaded = OSAllocatedUnfairLock(initialState: false)
     private let worker = DispatchQueue(label: "local.yasno.analysis", qos: .userInitiated)
     // Setup IPC to other applications must never run on main: the event tap waits for main.
     // Worker only. A field that could not confirm its caret in time skips live correction
@@ -133,17 +137,20 @@ final class AppModel: ObservableObject {
             self?.update(\.carambaRunning, true); self?.refresh()
         }
         terminateObserver = center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] note in
-            guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Self.carambaID else { return }
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            AccessibleEditor.forgetPreparedApplication(pid: app.processIdentifier)
+            guard app.bundleIdentifier == Self.carambaID else { return }
             self?.update(\.carambaRunning, !NSRunningApplication.runningApplications(withBundleIdentifier: Self.carambaID).isEmpty)
             self?.refresh()
         }
         update(\.loginEnabled, SMAppService.mainApp.status == .enabled)
-        worker.async { [self] in _ = detector }
+        worker.async { [self] in _ = detector; detectorLoaded.withLock { $0 = true } }
         // Process-wide AX timeout before the first refresh registers a focus observer on main:
         // an application that does not answer must not stall the UI queue for seconds.
         AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.12)
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refresh() }
+        timer?.tolerance = 2 // Permissions and Secure Input are also re-checked on every key.
     }
 
     private func updateIgnored() {
@@ -368,7 +375,9 @@ final class AppModel: ObservableObject {
     }
 
     private func request(for token: KeyboardMonitor.Token, source: KeyboardLayout, whileTyping: Bool) -> CorrectionRequest {
-        let bundle = AccessibleEditor.typingApplication()?.bundleIdentifier ?? ""
+        // The token already names the application that took its keys. Asking Accessibility
+        // again here, on main, cost 0.4–16 ms on every live tick.
+        let bundle = NSRunningApplication(processIdentifier: token.pid)?.bundleIdentifier ?? ""
         return CorrectionRequest(text: token.text, source: source, layouts: layouts, ignored: ignored,
                                  preferredTargetID: preferred[bundle] ?? globalPreferred,
                                  correctSpelling: correctSpelling, whileTyping: whileTyping,
@@ -379,6 +388,8 @@ final class AppModel: ObservableObject {
         guard monitor.enabled, monitor.revision == token.revision,
               let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
         let request = self.request(for: token, source: source, whileTyping: whileTyping)
+        // A gate opened before the dictionaries are parsed would hold input behind the load.
+        guard detectorLoaded.withLock({ $0 }) else { return }
         // Reserve before returning to the event stream, including replayed Space.
         // All dictionary/spelling work runs on the worker; negative results release
         // the gate without touching AX or doing browser IPC.
@@ -391,17 +402,25 @@ final class AppModel: ObservableObject {
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else { return }
+            if editor.isCanvasTypingTarget {
+                self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
+                return
+            }
+            // Asked at most once per attempt, here on the worker, and only once an edit is near:
+            // the same answer then serves the edit and its handling on main.
+            var knownReceiver: pid_t?
+            func receiver() -> pid_t {
+                if knownReceiver == nil { knownReceiver = editor.keyReceiver }
+                return knownReceiver!
+            }
+            func inPanel() -> Bool { AccessibleEditor.takesKeysInPanel(receiver: receiver(), pid: editor.pid) }
             // The panel's layout cannot be switched, so the rest of a word corrected while it is
             // typed would stay in the old layout. Correct it only once typing has stopped.
-            if whileTyping, !settled, editor.takesKeysInPanel {
+            if whileTyping, !settled, inPanel() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     guard self.monitor.revision == token.revision else { return }
                     self.correct(token, whileTyping: true, settled: true)
                 }
-                return
-            }
-            if editor.isCanvasTypingTarget {
-                self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
                 return
             }
             if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
@@ -435,10 +454,11 @@ final class AppModel: ObservableObject {
             let range = CFRange(location: suffixRange.location, length: token.text.utf16.count)
             let result = editor.replace(range: range, expected: token.text, replacement: suggestion.replacement,
                                         caret: caret, stillValid: { self.monitor.revision == token.revision && !IsSecureEventInputEnabled() },
-                                        commit: { self.monitor.commitGate(revision: token.revision) }, deadline: deadline)
+                                        commit: { self.monitor.commitGate(revision: token.revision) }, deadline: deadline, receiver: receiver())
+            let panel = inPanel()
             DispatchQueue.main.async {
                 self.handle(result, editor: editor, range: range, caret: caret, original: token.text,
-                            replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target, live: whileTyping)
+                            replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target, live: whileTyping, panel: panel)
             }
         }
     }
@@ -465,15 +485,23 @@ final class AppModel: ObservableObject {
     /// its key types in the layout selected here (a posted «п» arrived as «ф»). So the layout is
     /// selected first and the replacement pressed with that layout's keys.
     private func typeOnRemoteScreen(_ edit: KeystrokeEdit, in layout: KeyboardLayout) -> Bool {
+        Self.typeOnRemoteScreen(edit, in: layout, select: {
+            var selected = false
+            DispatchQueue.main.sync { selected = KeyboardLayout.currentID() == layout.id || self.selectLayout(layout) }
+            return selected
+        }, erase: { KeyboardMonitor.typeKeystrokes(KeystrokeEdit(deletions: edit.deletions, insertion: "")) },
+           // Screen Sharing learns of the new layout from a notification, after the selection returns.
+           pause: { Thread.sleep(forTimeInterval: 0.1) }, type: KeyboardMonitor.typeStrokes)
+    }
+
+    /// The layout is selected before anything is erased: a layout that cannot be selected must
+    /// leave the word as typed, like every other refused edit. Erasing overlaps the wait.
+    static func typeOnRemoteScreen(_ edit: KeystrokeEdit, in layout: KeyboardLayout, select: () -> Bool, erase: () -> Bool,
+                                   pause: () -> Void, type: ([KeyboardLayout.KeyStroke]) -> Bool) -> Bool {
         let strokes = edit.insertion.compactMap(layout.stroke(for:))
-        guard strokes.count == edit.insertion.count,
-              KeyboardMonitor.typeKeystrokes(KeystrokeEdit(deletions: edit.deletions, insertion: "")) else { return false }
-        var selected = false
-        DispatchQueue.main.sync { selected = KeyboardLayout.currentID() == layout.id || self.selectLayout(layout) }
-        guard selected else { return false }
-        // Screen Sharing learns of the new layout from a notification, after this returns.
-        Thread.sleep(forTimeInterval: 0.1)
-        return KeyboardMonitor.typeStrokes(strokes)
+        guard strokes.count == edit.insertion.count, select(), erase() else { return false }
+        pause()
+        return type(strokes)
     }
 
     /// An automatic correction made blind, or nil where erasing by count is unsafe. The field
@@ -489,11 +517,12 @@ final class AppModel: ObservableObject {
     private func handle(_ result: AccessibleEditor.EditResult, editor: AccessibleEditor, range: CFRange,
                         caret: CFRange, original: String, replacement: String, sourceID: String, target: KeyboardLayout,
                         cycle: LayoutCycle? = nil, live: Bool = false,
-                        physicalKeys: [KeyboardLayout.KeyStroke]? = nil, keystrokeSuffix: String? = nil) {
+                        physicalKeys: [KeyboardLayout.KeyStroke]? = nil, keystrokeSuffix: String? = nil,
+                        panel: Bool = false) {
         switch result {
         case .success:
-            // The panel keeps its own layout (see takesKeysInPanel): the next keys start a new word.
-            let panel = editor.takesKeysInPanel
+            // `panel`: the field takes keys in an Open/Save panel service (read on the worker, see
+            // keyReceiver). The panel keeps its own layout: the next keys start a new word.
             // The word just typed is gone from the field: a later Shift or Backspace must
             // not act on it. A layout change resets too; a spelling fix keeps the layout.
             // Before the receipt, which records the revision a keystroke undo counts from.
@@ -658,24 +687,27 @@ final class AppModel: ObservableObject {
                    let nextID = cycle.next(after: sourceID), let target = layouts.first(where: { $0.id == nextID }),
                    let origin = layouts.first(where: { $0.id == receipt.sourceID }),
                    let converted = target.id == origin.id ? receipt.original : self.detector.convertTextManually(receipt.original, source: origin, target: target, physicalKeys: receipt.physicalKeys) {
+                    let receiver = editor.keyReceiver
                     let result = editor.replace(range: receipt.range, expected: receipt.replacement,
                                                 replacement: converted, caret: caret,
                                                 stillValid: { self.monitor.revision == revision && !IsSecureEventInputEnabled() },
-                                                commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline)
+                                                commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline, receiver: receiver)
+                    let panel = AccessibleEditor.takesKeysInPanel(receiver: receiver, pid: editor.pid)
                     DispatchQueue.main.async {
                         self.handle(result, editor: editor, range: receipt.range, caret: caret, original: receipt.original,
                                     replacement: converted, sourceID: receipt.sourceID, target: target, cycle: cycle,
-                                    physicalKeys: receipt.physicalKeys)
+                                    physicalKeys: receipt.physicalKeys, panel: panel)
                     }
                     return
                 }
                 // Only an automatic correction has a one-press undo. A manual conversion
                 // keeps cycling all layouts, using the original physical key sequence.
                 if receipt.cycle == nil {
+                let receiver = editor.keyReceiver
                 let result = editor.replace(range: receipt.range, expected: receipt.replacement,
                                             replacement: receipt.original, caret: caret,
                                             stillValid: { self.monitor.revision == revision && !IsSecureEventInputEnabled() },
-                                            commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline)
+                                            commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline, receiver: receiver)
                 DispatchQueue.main.async {
                     if case .success = result {
                         guard let origin = layouts.first(where: { $0.id == receipt.sourceID }) else { return }
@@ -720,13 +752,15 @@ final class AppModel: ObservableObject {
                                                                 preferredTargetID: preferredID, physicalKeys: physicalKeys) else { switchOnly(); return }
             let compatible = KeyboardLayout.cycleOrder(layouts).filter { source.convert(text, to: $0) != nil }
             let cycle = LayoutCycle(layoutIDs: compatible.map(\.id), startingID: sourceID, firstTargetID: candidate.target.id)
+            let receiver = editor.keyReceiver
             let result = editor.replace(range: range, expected: text, replacement: candidate.replacement, caret: caret,
                                         stillValid: { self.monitor.revision == revision && !IsSecureEventInputEnabled() },
-                                        commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline)
+                                        commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline, receiver: receiver)
+            let panel = AccessibleEditor.takesKeysInPanel(receiver: receiver, pid: editor.pid)
             DispatchQueue.main.async {
                 self.handle(result, editor: editor, range: range, caret: caret, original: text,
                             replacement: candidate.replacement, sourceID: sourceID, target: candidate.target, cycle: cycle,
-                            physicalKeys: physicalKeys)
+                            physicalKeys: physicalKeys, panel: panel)
             }
         }
     }

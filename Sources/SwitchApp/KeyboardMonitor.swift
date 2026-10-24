@@ -748,11 +748,23 @@ final class KeyboardMonitor {
         return source
     }
 
+    /// At most 16 UTF-16 units per event, cut between characters: a surrogate pair or a
+    /// combining sequence is never split across two events.
+    static func unicodeChunks(_ text: String, limit: Int = 16) -> [[UniChar]] {
+        var chunks: [[UniChar]] = []
+        var current: [UniChar] = []
+        for character in text {
+            let units = Array(character.utf16)
+            if !current.isEmpty, current.count + units.count > limit { chunks.append(current); current = [] }
+            current += units
+        }
+        if !current.isEmpty { chunks.append(current) }
+        return chunks
+    }
+
     private static func post(unicode text: String, with deliver: (CGEvent) -> Void) -> Bool {
         guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
-        let units = Array(text.utf16)
-        for offset in stride(from: 0, to: units.count, by: 16) {
-            let chunk = Array(units[offset..<min(offset + 16, units.count)])
+        for chunk in unicodeChunks(text) {
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { return false }
             for event in [down, up] {

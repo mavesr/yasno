@@ -75,6 +75,11 @@ struct AccessibleEditor {
         }
     }
 
+    /// A terminated process must not count as prepared: the system reuses its pid.
+    static func forgetPreparedApplication(pid: pid_t) {
+        preparedLock.lock(); prepared.removeValue(forKey: pid); preparedLock.unlock()
+    }
+
     /// Return applications to their default accessibility mode at exit.
     static func releasePreparedApplications() {
         preparedLock.lock(); let apps = prepared; prepared = [:]; preparedLock.unlock()
@@ -161,11 +166,16 @@ struct AccessibleEditor {
 
     /// The panel keeps the input source it had when it opened: a layout selected for the
     /// session never reaches its field, so only the words themselves can be corrected there.
-    var takesKeysInPanel: Bool { inputPID != pid }
+    static func takesKeysInPanel(receiver: pid_t, pid: pid_t) -> Bool { receiver != pid }
 
     /// The process that takes keys for this field: the panel service drawing the window the
-    /// field is in, else the application itself.
-    private var inputPID: pid_t {
+    /// field is in, else the application itself. Two AX requests and the whole window list
+    /// (several milliseconds): ask once per edit, on the worker, never on main.
+    var keyReceiver: pid_t {
+        // No panel service process, no panel: the common case costs no AX and no window list.
+        guard Self.panelServiceBundleIDs.contains(where: {
+            !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty
+        }) else { return pid }
         var raw: CFTypeRef?
         var origin = CGPoint.zero, size = CGSize.zero
         guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &raw) == .success,
@@ -317,10 +327,11 @@ struct AccessibleEditor {
         }
     }
 
+    /// `receiver` is this field's keyReceiver, read once by the caller.
     func replace(range: CFRange, expected: String, replacement: String,
                  caret: CFRange, stillValid: () -> Bool, commit: () -> Bool,
-                 deadline: TimeInterval? = nil) -> EditResult {
-        let inputPID = inputPID
+                 deadline: TimeInterval? = nil, receiver: pid_t) -> EditResult {
+        let inputPID = receiver
         return ReplacementTransaction.run(range: range, expected: expected, replacement: replacement, caret: caret,
             stillValid: stillValid, commit: commit, environment: .init(
                 selection: { selection }, text: { text(in: $0) }, focused: { isFocused() },

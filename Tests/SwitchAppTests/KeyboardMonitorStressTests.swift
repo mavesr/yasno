@@ -651,6 +651,28 @@ final class KeyboardMonitorStressTests: XCTestCase {
         XCTAssertEqual(before.manual.count, 1)
     }
 
+    func testManyShiftScrollsQueuedBeforeMainStayChords() async throws {
+        for count in [9, 100] {
+            let rig = Rig(layouts: try layouts())
+            for _ in 0..<count {
+                for event in [try shift(true), try scroll(), try shift(false)] { rig.send(event) }
+            }
+            for _ in 0..<4 { await flush() }
+            XCTAssertTrue(rig.manual.isEmpty, "\(count) Shift+scroll gestures")
+        }
+    }
+
+    func testWordWithADeadKeyIsNotTrackedByKeyCount() async throws {
+        let installed = KeyboardLayout.installed(enabledOnly: false)
+        let international = try XCTUnwrap(installed.first { $0.id == "com.apple.keylayout.USInternational-PC" })
+        let rig = Rig(layouts: [international] + Array(try layouts().dropFirst()))
+        // c a f ' e is café in the field, not five characters to erase.
+        await type(rig, try [8, 0, 3, 39, 14, 49].map { try key($0) })
+        XCTAssertTrue(rig.completed.isEmpty)
+        await type(rig, try [5, 4, 49].map { try key($0) })
+        XCTAssertEqual(rig.completed.map(\.text), ["gh"], "the next word is tracked again")
+    }
+
     private func type(_ rig: Rig, _ events: [CGEvent]) async {
         // Flushed one by one: no key waits behind a boundary reservation.
         for event in events { rig.send(event); await flush(); await flush() }

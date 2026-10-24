@@ -22,6 +22,7 @@ public final class KeyboardLayout {
     private let data: CFData
     private var forward: [UInt16: String] = [:]
     private var reverse: [String: UInt16] = [:]
+    private var deadKeys: Set<UInt16> = []
 
     public init?(source: TISInputSource) {
         guard let dataPointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData),
@@ -54,6 +55,7 @@ public final class KeyboardLayout {
                 else { continue }
                 let position = key | (shift ? 0x100 : 0)
                 forward[position | (capsLock ? 0x200 : 0)] = value
+                if isDead(key: key, shift: shift, capsLock: capsLock) { deadKeys.insert(position | (capsLock ? 0x200 : 0)) }
                 // Prefer the main keyboard, including its shifted symbols, before the keypad.
                 if !capsLock, reverse[value] == nil { reverse[value] = position }
               }
@@ -73,6 +75,23 @@ public final class KeyboardLayout {
             OptionBits(kUCKeyTranslateNoDeadKeysMask), &dead, buffer.count, &length, &buffer)
         guard result == noErr, length > 0 else { return nil }
         return String(utf16CodeUnits: buffer, count: length)
+    }
+
+    /// A key that only starts a composition (' then e is é on US International) types nothing itself.
+    private func isDead(key: UInt16, shift: Bool, capsLock: Bool) -> Bool {
+        let layout = UnsafeRawPointer(CFDataGetBytePtr(data)).assumingMemoryBound(to: UCKeyboardLayout.self)
+        var dead: UInt32 = 0
+        var length = 0
+        var buffer = [UniChar](repeating: 0, count: 16)
+        let result = UCKeyTranslate(layout, key, UInt16(kUCKeyActionDown),
+            UInt32(((shift ? shiftKey : 0) | (capsLock ? alphaLock : 0)) >> 8), UInt32(LMGetKbdType()),
+            0, &dead, buffer.count, &length, &buffer)
+        return result == noErr && length == 0 && dead != 0
+    }
+
+    /// The text this key leaves in the field depends on the next key: the application composes it.
+    public func isDeadKey(key: UInt16, shift: Bool, capsLock: Bool = false) -> Bool {
+        deadKeys.contains(key | (shift ? 0x100 : 0) | (capsLock ? 0x200 : 0))
     }
 
     /// The physical key that types this character, ignoring Shift.

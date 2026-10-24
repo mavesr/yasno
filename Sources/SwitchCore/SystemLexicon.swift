@@ -82,6 +82,14 @@ public final class SystemLexicon {
         return guesses
     }
 
+    /// The caches are keyed by words the user typed. Dropped when the user moves to another
+    /// application or pauses, so they do not follow the user from one application to the next.
+    public func forget() {
+        cacheLock.lock()
+        cache.removeAll(); guessCache.removeAll()
+        cacheLock.unlock()
+    }
+
     public func knows(_ word: String, languages: [Language]) -> Bool {
         languages.contains { knows(word, language: $0) == true }
     }

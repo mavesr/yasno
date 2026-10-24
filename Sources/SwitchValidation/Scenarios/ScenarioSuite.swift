@@ -368,14 +368,18 @@ public final class ScenarioSuite {
             guard let strokes = keyboard.strokes(for: word) else { return }
             func check(_ id: String, _ category: String, _ strokes: [KeyStroke], start: KeyboardLayout,
                      expected: String, typed: String) {
-                guard onlyCase == nil || onlyCase == id else { return }
+                // A stability case (id/again) replays its base word first, but reports only itself.
+                let againOnly = onlyCase == id + "/again"
+                guard onlyCase == nil || onlyCase == id || againOnly else { return }
                 let steps = strokes.map { TypingSimulator.Step.key($0) } + [.space]
                 let outcome = simulator.type(steps, start: start, preferred: setup.preferred)
-                partial.sessions += 1
                 let actual = WordTextCanonical.apostrophes(String(outcome.text.dropLast()))
-                let plain = plainRender(steps, in: start).trimmingCharacters(in: .whitespaces)
-                partial.add(id: id, category: category, input: plain, expected: expected, actual: actual,
-                            missed: [typed], source: start.id, target: outcome.finalLayout, writeMisses: false)
+                if !againOnly {
+                    partial.sessions += 1
+                    let plain = plainRender(steps, in: start).trimmingCharacters(in: .whitespaces)
+                    partial.add(id: id, category: category, input: plain, expected: expected, actual: actual,
+                                missed: [typed], source: start.id, target: outcome.finalLayout, writeMisses: false)
+                }
                 // A corrected word typed again in the layout it ended in must stay as it is:
                 // no second change and no switching back and forth.
                 guard !outcome.edits.isEmpty, let final = keyboards[outcome.finalLayout],

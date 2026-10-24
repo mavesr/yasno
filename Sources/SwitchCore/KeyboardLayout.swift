@@ -94,6 +94,11 @@ public final class KeyboardLayout {
         deadKeys.contains(key | (shift ? 0x100 : 0) | (capsLock ? 0x200 : 0))
     }
 
+    /// The key and Shift state that type this character.
+    public func stroke(for character: Character) -> KeyStroke? {
+        reverse[String(character)].map { KeyStroke(key: $0 & 0xff, shift: $0 & 0x100 != 0) }
+    }
+
     /// The physical key that types this character, ignoring Shift.
     public func key(for character: Character) -> UInt16? {
         reverse[String(character)].map { $0 & 0xff }

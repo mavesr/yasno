@@ -712,8 +712,7 @@ final class KeyboardMonitor {
     /// Erase and retype at the caret of a field whose text cannot be read. Posted into the
     /// session stream behind the keys already delivered: a direct post to the application
     /// could overtake a Space still on its way, and nothing can confirm the result.
-    /// Screen Sharing sends on one character per key event: there each character gets its own.
-    static func typeKeystrokes(_ edit: KeystrokeEdit, characterPerEvent: Bool = false) -> Bool {
+    static func typeKeystrokes(_ edit: KeystrokeEdit) -> Bool {
         guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
         for _ in 0..<edit.deletions {
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true),
@@ -724,8 +723,22 @@ final class KeyboardMonitor {
                 event.post(tap: .cgSessionEventTap)
             }
         }
-        guard characterPerEvent else { return post(unicode: edit.insertion) { $0.post(tap: .cgSessionEventTap) } }
-        return edit.insertion.allSatisfy { post(unicode: String($0)) { $0.post(tap: .cgSessionEventTap) } }
+        return post(unicode: edit.insertion) { $0.post(tap: .cgSessionEventTap) }
+    }
+
+    /// Press these keys as if typed: for a window that sends on keys, not the text of an event.
+    static func typeStrokes(_ strokes: [KeyboardLayout.KeyStroke]) -> Bool {
+        guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
+        for stroke in strokes {
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: stroke.key, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: stroke.key, keyDown: false) else { return false }
+            for event in [down, up] {
+                event.flags = stroke.shift ? .maskShift : []
+                event.setIntegerValueField(.eventSourceUserData, value: editTag)
+                event.post(tap: .cgSessionEventTap)
+            }
+        }
+        return true
     }
 
     private static func editSource() -> CGEventSource? {

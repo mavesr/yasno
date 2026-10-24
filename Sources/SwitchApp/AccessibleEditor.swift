@@ -148,8 +148,12 @@ struct AccessibleEditor {
     /// application's AX tree, but keys posted to the host never reach them.
     static let panelServiceBundleIDs: Set<String> = ["com.apple.appkit.xpc.openAndSavePanelService"]
 
-    /// The process that takes keys for this field: the panel service whose window lies on
-    /// top under the field, else the application itself.
+    /// The panel keeps the input source it had when it opened: a layout selected for the
+    /// session never reaches its field, so only the words themselves can be corrected there.
+    var takesKeysInPanel: Bool { inputPID != pid }
+
+    /// The process that takes keys for this field: the panel service drawing the window the
+    /// field is in, else the application itself.
     private var inputPID: pid_t {
         var raw: CFTypeRef?
         var origin = CGPoint.zero, size = CGSize.zero
@@ -159,22 +163,28 @@ struct AccessibleEditor {
               AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &raw) == .success,
               let extent = raw, CFGetTypeID(extent) == AXValueGetTypeID(),
               AXValueGetValue(unsafeBitCast(extent, to: AXValue.self), .cgSize, &size),
-              let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+              let windows = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements],
                                                        kCGNullWindowID) as? [[String: Any]] else { return pid }
         return Self.inputPID(at: CGPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2), pid: pid,
                              windows: windows) { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier }
     }
 
-    /// Windows come front to back; only the topmost ordinary window under the point counts.
+    /// The host shows the panel in a window of its own; the service keeps an offscreen window
+    /// of the same frame, listed in front of the host's or behind it. Windows come front to
+    /// back: the host's topmost visible one under the point holds the field.
     static func inputPID(at point: CGPoint, pid: pid_t, windows: [[String: Any]],
                          bundleID: (pid_t) -> String?) -> pid_t {
-        for window in windows where (window[kCGWindowLayer as String] as? Int) == 0 {
-            guard let bounds = window[kCGWindowBounds as String] as? NSDictionary,
-                  let frame = CGRect(dictionaryRepresentation: bounds), frame.contains(point),
-                  let owner = window[kCGWindowOwnerPID as String] as? pid_t else { continue }
-            return owner != pid && panelServiceBundleIDs.contains(bundleID(owner) ?? "") ? owner : pid
+        let ordinary = windows.compactMap { window -> (owner: pid_t, frame: CGRect, visible: Bool)? in
+            guard (window[kCGWindowLayer as String] as? Int) == 0,
+                  let owner = window[kCGWindowOwnerPID as String] as? pid_t,
+                  let bounds = window[kCGWindowBounds as String] as? NSDictionary,
+                  let frame = CGRect(dictionaryRepresentation: bounds) else { return nil }
+            return (owner, frame, window[kCGWindowIsOnscreen as String] as? Bool == true)
         }
-        return pid
+        guard let host = ordinary.first(where: { $0.owner == pid && $0.visible && $0.frame.contains(point) }),
+              let panel = ordinary.first(where: { $0.owner != pid && $0.frame == host.frame
+                  && panelServiceBundleIDs.contains(bundleID($0.owner) ?? "") }) else { return pid }
+        return panel.owner
     }
 
     /// Google Docs and Slides draw the document themselves. Keys go to a hidden field that

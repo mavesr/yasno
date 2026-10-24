@@ -55,8 +55,9 @@ final class AccessibleEditorTests: XCTestCase {
         XCTAssertFalse(AccessibleEditor.embedsChromium(URL(fileURLWithPath: "/nonexistent/Native.app")))
     }
     func testOpenAndSavePanelFieldTakesKeysInItsService() {
-        func window(_ pid: pid_t, _ frame: CGRect, layer: Int = 0) -> [String: Any] {
-            [kCGWindowOwnerPID as String: pid, kCGWindowLayer as String: layer,
+        func window(_ pid: pid_t, _ frame: CGRect, layer: Int = 0, visible: Bool? = nil) -> [String: Any] {
+            // Only the host's windows are on screen; the service's are drawn by the host.
+            [kCGWindowOwnerPID as String: pid, kCGWindowLayer as String: layer, kCGWindowIsOnscreen as String: visible ?? (pid == 51856),
              kCGWindowBounds as String: frame.dictionaryRepresentation]
         }
         let ids: [pid_t: String] = [52180: "com.apple.appkit.xpc.openAndSavePanelService", 900: "com.example.other"]
@@ -64,12 +65,16 @@ final class AccessibleEditorTests: XCTestCase {
         func target(_ windows: [[String: Any]]) -> pid_t {
             AccessibleEditor.inputPID(at: field, pid: 51856, windows: windows) { ids[$0] }
         }
-        // The service draws the sheet over the host's placeholder window of the same frame.
+        // Either the service's window or the host's placeholder of the same frame can be in front.
         XCTAssertEqual(target([window(52180, sheet), window(51856, sheet)]), 52180)
-        XCTAssertEqual(target([window(51856, sheet), window(52180, sheet)]), 51856)
-        // Another application's window on top, or a menu above everything, decides nothing.
-        XCTAssertEqual(target([window(900, sheet), window(52180, sheet)]), 51856)
-        XCTAssertEqual(target([window(1, sheet, layer: 25), window(52180, sheet)]), 52180)
-        XCTAssertEqual(target([window(52180, CGRect(x: 0, y: 0, width: 10, height: 10))]), 51856)
+        XCTAssertEqual(target([window(51856, sheet), window(52180, sheet)]), 52180)
+        // A service window elsewhere, another application's window, or a menu decides nothing.
+        let elsewhere = CGRect(x: 700, y: 300, width: 400, height: 200)
+        XCTAssertEqual(target([window(51856, sheet), window(52180, elsewhere)]), 51856)
+        XCTAssertEqual(target([window(51856, sheet), window(900, sheet)]), 51856)
+        XCTAssertEqual(target([window(51856, sheet, layer: 25), window(52180, sheet)]), 51856)
+        XCTAssertEqual(target([window(52180, sheet)]), 51856)
+        // A host window hidden on another Space holds no field.
+        XCTAssertEqual(target([window(51856, sheet, visible: false), window(52180, sheet)]), 51856)
     }
 }

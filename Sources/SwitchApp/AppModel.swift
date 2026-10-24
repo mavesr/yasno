@@ -372,7 +372,7 @@ final class AppModel: ObservableObject {
                                  liveConverted: token.liveConverted)
     }
 
-    private func correct(_ token: KeyboardMonitor.Token, whileTyping: Bool) {
+    private func correct(_ token: KeyboardMonitor.Token, whileTyping: Bool, settled: Bool = false) {
         guard monitor.enabled, monitor.revision == token.revision,
               let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
         let request = self.request(for: token, source: source, whileTyping: whileTyping)
@@ -388,6 +388,15 @@ final class AppModel: ObservableObject {
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else { return }
+            // The panel's layout cannot be switched, so the rest of a word corrected while it is
+            // typed would stay in the old layout. Correct it only once typing has stopped.
+            if whileTyping, !settled, editor.takesKeysInPanel {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    guard self.monitor.revision == token.revision else { return }
+                    self.correct(token, whileTyping: true, settled: true)
+                }
+                return
+            }
             if editor.isCanvasTypingTarget {
                 self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
                 return
@@ -463,10 +472,12 @@ final class AppModel: ObservableObject {
                         physicalKeys: [KeyboardLayout.KeyStroke]? = nil, keystrokeSuffix: String? = nil) {
         switch result {
         case .success:
+            // The panel keeps its own layout (see takesKeysInPanel): the next keys start a new word.
+            let panel = editor.takesKeysInPanel
             // The word just typed is gone from the field: a later Shift or Backspace must
             // not act on it. A layout change resets too; a spelling fix keeps the layout.
             // Before the receipt, which records the revision a keystroke undo counts from.
-            if !live { monitor.reset() }
+            if !live || panel { monitor.reset() }
             corrections += 1
             receipt = Receipt(editor: editor, original: original, replacement: replacement,
                               range: CFRange(location: range.location, length: replacement.utf16.count),
@@ -477,7 +488,7 @@ final class AppModel: ObservableObject {
                               keystrokes: keystrokeSuffix.map { ($0, monitor.revision) })
             // The transaction confirmed focus just before returning. Repeating the full AX
             // focus lookup here would hold queued input on main for no extra safety.
-            if AccessibleEditor.typingApplication()?.processIdentifier == editor.pid {
+            if AccessibleEditor.typingApplication()?.processIdentifier == editor.pid, !panel {
                 if cycle != nil {
                     guard selectManually(target, bundleID: NSRunningApplication(processIdentifier: editor.pid)?.bundleIdentifier) else { return }
                 } else if !selectLayout(target) { detail = "Текст исправлен, но раскладку переключить не удалось."; return }

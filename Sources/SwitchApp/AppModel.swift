@@ -448,15 +448,32 @@ final class AppModel: ObservableObject {
     private func correctByKeystrokes(_ token: KeyboardMonitor.Token, request: CorrectionRequest, source: KeyboardLayout,
                                      editor: AccessibleEditor, whileTyping: Bool) {
         guard let suggestion = detector.correction(request, context: ""),
-              let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source, blind: AccessibleEditor.blind),
+              let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source,
+                                            blind: AccessibleEditor.blind || editor.showsRemoteScreen),
               monitor.revision == token.revision, !IsSecureEventInputEnabled(),
               monitor.commitGate(revision: token.revision) else { return }
-        let result: AccessibleEditor.EditResult = KeyboardMonitor.typeKeystrokes(edit) ? .success : .failed
+        let typed = editor.showsRemoteScreen ? typeOnRemoteScreen(edit, in: suggestion.target) : KeyboardMonitor.typeKeystrokes(edit)
+        let result: AccessibleEditor.EditResult = typed ? .success : .failed
         DispatchQueue.main.async {
             self.handle(result, editor: editor, range: CFRange(), caret: CFRange(), original: token.text,
                         replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target,
                         live: whileTyping, keystrokeSuffix: token.suffix)
         }
+    }
+
+    /// Worker, inside the gate. Screen Sharing ignores the text of a key event and sends on what
+    /// its key types in the layout selected here (a posted «п» arrived as «ф»). So the layout is
+    /// selected first and the replacement pressed with that layout's keys.
+    private func typeOnRemoteScreen(_ edit: KeystrokeEdit, in layout: KeyboardLayout) -> Bool {
+        let strokes = edit.insertion.compactMap(layout.stroke(for:))
+        guard strokes.count == edit.insertion.count,
+              KeyboardMonitor.typeKeystrokes(KeystrokeEdit(deletions: edit.deletions, insertion: "")) else { return false }
+        var selected = false
+        DispatchQueue.main.sync { selected = KeyboardLayout.currentID() == layout.id || self.selectLayout(layout) }
+        guard selected else { return false }
+        // Screen Sharing learns of the new layout from a notification, after this returns.
+        Thread.sleep(forTimeInterval: 0.1)
+        return KeyboardMonitor.typeStrokes(strokes)
     }
 
     /// An automatic correction made blind, or nil where erasing by count is unsafe. The field
@@ -514,10 +531,10 @@ final class AppModel: ObservableObject {
     private func manualByKeystrokes(editor: AccessibleEditor, expectedToken: KeyboardMonitor.Token?, receipt: Receipt?,
                                     revision: UInt64, sourceID: String, layouts: [KeyboardLayout],
                                     preferredID: String?, bundleID: String?) -> Bool {
-        func type(_ edit: KeystrokeEdit?) -> Bool {
+        func type(_ edit: KeystrokeEdit?, in layout: KeyboardLayout) -> Bool {
             guard let edit, monitor.revision == revision, !IsSecureEventInputEnabled(),
                   monitor.commitGate(revision: revision) else { return false }
-            return KeyboardMonitor.typeKeystrokes(edit)
+            return editor.showsRemoteScreen ? typeOnRemoteScreen(edit, in: layout) : KeyboardMonitor.typeKeystrokes(edit)
         }
         if let receipt, let keystrokes = receipt.keystrokes, CFEqual(receipt.editor.element, editor.element),
            expectedToken.map({ $0.pid == editor.pid && [receipt.original, receipt.replacement].contains($0.text) })
@@ -529,7 +546,7 @@ final class AppModel: ObservableObject {
                       let target = layouts.first(where: { $0.id == nextID }),
                       let converted = target.id == origin.id ? receipt.original
                           : detector.convertTextManually(receipt.original, source: origin, target: target, physicalKeys: receipt.physicalKeys),
-                      type(KeystrokeEdit(typed: receipt.replacement, replacement: converted, suffix: suffix)) else { return true }
+                      type(KeystrokeEdit(typed: receipt.replacement, replacement: converted, suffix: suffix), in: target) else { return true }
                 DispatchQueue.main.async {
                     self.handle(.success, editor: editor, range: CFRange(), caret: CFRange(), original: receipt.original,
                                 replacement: converted, sourceID: receipt.sourceID, target: target, cycle: cycle,
@@ -537,7 +554,7 @@ final class AppModel: ObservableObject {
                 }
                 return true
             }
-            guard type(KeystrokeEdit(typed: receipt.replacement, replacement: receipt.original, suffix: suffix)) else { return true }
+            guard type(KeystrokeEdit(typed: receipt.replacement, replacement: receipt.original, suffix: suffix), in: origin) else { return true }
             DispatchQueue.main.async {
                 let compatible = KeyboardLayout.cycleOrder(layouts).filter { origin.convert(receipt.original, to: $0) != nil }
                 self.receipt = Receipt(editor: editor, original: receipt.original, replacement: receipt.original,
@@ -556,7 +573,7 @@ final class AppModel: ObservableObject {
               let source = layouts.first(where: { $0.id == sourceID }) else { return expectedToken != nil }
         guard let candidate = detector.convertManually(token.text, source: source, layouts: layouts,
                                                        preferredTargetID: preferredID, physicalKeys: token.physicalKeys),
-              type(KeystrokeEdit(typed: token.text, replacement: candidate.replacement, suffix: token.suffix)) else { return true }
+              type(KeystrokeEdit(typed: token.text, replacement: candidate.replacement, suffix: token.suffix), in: candidate.target) else { return true }
         let compatible = KeyboardLayout.cycleOrder(layouts).filter { source.convert(token.text, to: $0) != nil }
         let cycle = LayoutCycle(layoutIDs: compatible.map(\.id), startingID: sourceID, firstTargetID: candidate.target.id)
         DispatchQueue.main.async {

@@ -726,6 +726,21 @@ final class KeyboardMonitor {
         return post(unicode: edit.insertion) { $0.post(tap: .cgSessionEventTap) }
     }
 
+    /// Press these keys as if typed: for a window that sends on keys, not the text of an event.
+    static func typeStrokes(_ strokes: [KeyboardLayout.KeyStroke]) -> Bool {
+        guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
+        for stroke in strokes {
+            guard let down = CGEvent(keyboardEventSource: source, virtualKey: stroke.key, keyDown: true),
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: stroke.key, keyDown: false) else { return false }
+            for event in [down, up] {
+                event.flags = stroke.shift ? .maskShift : []
+                event.setIntegerValueField(.eventSourceUserData, value: editTag)
+                event.post(tap: .cgSessionEventTap)
+            }
+        }
+        return true
+    }
+
     private static func editSource() -> CGEventSource? {
         guard let source = CGEventSource(stateID: .privateState) else { return nil }
         source.userData = editTag

@@ -77,6 +77,8 @@ if CommandLine.arguments.contains("--diagnose") {
     print("Dictionaries:", detector.counts)
     print("Accessibility:", AXIsProcessTrusted(), "Input monitoring:", CGPreflightListenEventAccess())
     for layout in KeyboardLayout.installed() { print(layout.id, layout.name, layout.languages) }
+} else if CommandLine.arguments.contains("--trace-keys") {
+    KeyTrace.run()
 } else {
     let application = NSApplication.shared
     let delegate = AppDelegate()

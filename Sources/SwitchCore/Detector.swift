@@ -172,6 +172,8 @@ public final class Detector {
         return best.key
     }
 
+    private static let wrappers: [Character: Character] = ["\"": "\"", "'": "'", "«": "»", "“": "”", "„": "“", "‘": "’", "(": ")"]
+
     public func convertTextManually(_ text: String, source: KeyboardLayout, target: KeyboardLayout,
                                     physicalKeys: [KeyboardLayout.KeyStroke]? = nil) -> String? {
         if !text.isEmpty, !text.contains(where: \.isLetter) {
@@ -196,6 +198,13 @@ public final class Detector {
                    rank(translated, languages: target.languages) != nil {
                     return translated + input.dropFirst(core.count)
                 }
+            }
+            // Quotes or brackets around a word keep their look: "ghbdtn" → "привет", not ЭприветЭ.
+            if !sourceCyrillic, input.count > 2, let open = input.first, let close = input.last,
+               Self.wrappers[open] == close,
+               let inner = source.convert(String(input.dropFirst().dropLast()), to: target),
+               rank(inner, languages: target.languages) != nil {
+                return String(open) + inner + String(close)
             }
             if sourceCyrillic {
                 var converted = ""
@@ -508,9 +517,19 @@ public final class Detector {
         return candidates.count == 1 ? candidates.first : nil
     }
 
+    /// Text typed on a Ukrainian layout is not switched to Russian while the word is typed,
+    /// only once it is complete: a correct Ukrainian form the frequency list lacks (Включіть)
+    /// starts like a Russian word (Включит, Включи). Ukrainian typed on the Russian layout
+    /// (памъять) still switches early.
+    private func liveTargets(_ layouts: [KeyboardLayout], source: KeyboardLayout) -> [KeyboardLayout] {
+        guard source.languages.contains(.ukrainian) else { return layouts }
+        return layouts.filter { !$0.languages.contains(.russian) }
+    }
+
     public func suggestWhileTyping(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],
                                    ignored: Set<String> = [], preferredTargetID: String? = nil,
                                    context: String = "", spellingAware: Bool = false) -> Suggestion? {
+        let layouts = liveTargets(layouts, source: source)
         guard word.count >= 4, !ignored.contains(word.lowercased()) else { return nil }
         guard !isNativePrefix(word, languages: source.languages) else { return nil }
         if let address = suggestAddress(word, source: source, layouts: layouts) {
@@ -537,6 +556,7 @@ public final class Detector {
 
     public func maySuggestWhileTyping(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],
                                       ignored: Set<String> = [], spellingAware: Bool = false) -> Bool {
+        let layouts = liveTargets(layouts, source: source)
         guard word.count >= 4, !ignored.contains(word.lowercased()),
               !isNativePrefix(word, languages: source.languages) else { return false }
         if let address = suggestAddress(word, source: source, layouts: layouts) {

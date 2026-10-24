@@ -16,7 +16,9 @@ public struct CorrectionRequest {
 
     public init(text: String, source: KeyboardLayout, layouts: [KeyboardLayout], ignored: Set<String> = [],
                 preferredTargetID: String?, correctSpelling: Bool, whileTyping: Bool, liveConverted: Bool = false) {
-        self.text = text; self.source = source; self.layouts = layouts; self.ignored = ignored
+        // An exception written with one apostrophe also covers the others (п'ятниця, п’ятниця).
+        self.text = text; self.source = source; self.layouts = layouts
+        self.ignored = ignored.union(ignored.map { WordText.canonical($0.lowercased()) })
         self.preferredTargetID = preferredTargetID; self.correctSpelling = correctSpelling
         self.whileTyping = whileTyping; self.liveConverted = liveConverted
     }
@@ -24,6 +26,12 @@ public struct CorrectionRequest {
     func with(text: String) -> CorrectionRequest {
         CorrectionRequest(text: text, source: source, layouts: layouts, ignored: ignored, preferredTargetID: preferredTargetID,
                           correctSpelling: correctSpelling, whileTyping: whileTyping, liveConverted: liveConverted)
+    }
+
+    /// The whole text as typed is an exception, checked before any symbols around it are
+    /// set aside: #ghbdtn listed as is stays #ghbdtn.
+    var isIgnored: Bool {
+        ignored.contains(text.lowercased()) || ignored.contains(WordText.canonical(text.lowercased()))
     }
 
     /// Symbols before a word (/вумудщзук → /developer, «руддщ → «hello) stay as typed and the
@@ -50,6 +58,7 @@ extension Detector {
     /// Checked before input is held and before any Accessibility work. False means
     /// no correction can follow, whatever the surrounding text turns out to be.
     public func mayCorrect(_ request: CorrectionRequest) -> Bool {
+        if request.isIgnored { return false }
         if let prefix = request.openingSymbols { return mayCorrect(request.with(text: String(request.text.dropFirst(prefix.count)))) }
         if let suffix = request.closingSymbols { return mayCorrect(request.with(text: String(request.text.dropLast(suffix.count)))) }
         if request.liveConverted {
@@ -67,6 +76,7 @@ extension Detector {
 
     /// The replacement for the word, given up to 256 characters typed before it.
     public func correction(_ request: CorrectionRequest, context: String) -> Suggestion? {
+        if request.isIgnored { return nil }
         if let prefix = request.openingSymbols {
             return correction(request.with(text: String(request.text.dropFirst(prefix.count))), context: context + prefix).map {
                 Suggestion(original: request.text, replacement: prefix + $0.replacement, target: $0.target, score: $0.score)

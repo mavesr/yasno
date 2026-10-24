@@ -119,6 +119,29 @@ final class KeyboardMonitorTests: XCTestCase {
         XCTAssertFalse(harness.monitor.faulted)
     }
 
+    func testReplayedTabIsHeldUntilTheWordBeforeItIsEdited() throws {
+        // The Tab waits in the queue behind the first Space, so it comes back as a replay.
+        let events = try [UInt16(0), 49, 5, 4, 48, 7].flatMap { code in
+            [try key(code), try key(code, down: false)]
+        }
+        let harness = Harness(events: events, abc: try abc())
+        var words: [String] = []
+        harness.monitor.onToken = { [weak harness] token in
+            guard let harness else { return }
+            XCTAssertTrue(harness.monitor.beginGate(revision: token.revision))
+            words.append(token.text + token.suffix)
+            harness.lock.lock()
+            XCTAssertFalse(harness.delivered.contains { $0.key == 48 }, "Tab reached the next field before \(token.text)")
+            harness.lock.unlock()
+            DispatchQueue.main.async { harness.monitor.endGate() }
+        }
+        harness.sendWhileMainIsBlocked(events)
+        wait(for: [harness.finished], timeout: 2)
+        XCTAssertEqual(words, ["a ", "gh"])
+        XCTAssertEqual(harness.delivered, harness.expected)
+        XCTAssertFalse(harness.monitor.faulted)
+    }
+
     func testClickCancelsAReservedBoundaryWithoutDroppingFollowingKeys() throws {
         let click = try XCTUnwrap(CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
             mouseCursorPosition: .zero, mouseButton: .left))

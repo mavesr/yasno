@@ -50,11 +50,12 @@ final class KeyboardMonitor {
     private var physicalKeys: [KeyboardLayout.KeyStroke]? = []
     private var completedToken: Token?
     private var liveConverted = false
+    private var composing = false // A dead key was typed in this word: the field shows other text than the keys.
     private var sourceID = "" { didSet { publishReplayLayout() } }
     private var pid: pid_t = 0
     private var shiftGesture = ShiftTapGesture()
     private var scrolledSinceShift = false // Under lock: the user scrolled after the last physical Shift press.
-    private var shiftChords: [UInt64] = [] // Under lock: timestamps of recent Shift releases that ended a Shift+scroll.
+    private var shiftChords: [UInt64] = [] // Under lock: Shift releases that ended a Shift+scroll, until main observes them.
     private var boundaryShiftGesture = ShiftTapGesture() // Tap-side reservation only; under lock.
     private let lock = NSLock()
     private var generation: UInt64 = 0
@@ -180,6 +181,15 @@ final class KeyboardMonitor {
         lock.lock()
         guard !hasFaulted, !gated, !replayInFlight else { lock.unlock(); return }
         guard !pending.isEmpty else { draining = false; lock.unlock(); return }
+        // A queued Tab leaves the field, as a physical one does: finish the word before it
+        // while the Tab is still held. A gate opened for that word resumes the drain later.
+        if pending[0].type == .keyDown, pending[0].getIntegerValueField(.keyboardEventKeycode) == 48, !token.isEmpty,
+           let tab = pending[0].copy() {
+            lock.unlock()
+            receive(.keyDown, tab)
+            drainNext()
+            return
+        }
         let event = pending.removeFirst()
         var batch = [event]
         // Post an already complete physical press together. Waiting for the UI
@@ -383,7 +393,7 @@ final class KeyboardMonitor {
     func reset() {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock(); generation &+= 1; lock.unlock()
-        token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; shiftGesture.reset()
+        token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; composing = false; shiftGesture.reset()
         onCancelAnalysis?()
     }
 
@@ -435,7 +445,7 @@ final class KeyboardMonitor {
                 // a press and release held behind an edit, reach main only later.
                 lock.lock()
                 if event.flags.contains(.maskShift) { scrolledSinceShift = false }
-                else if scrolledSinceShift { shiftChords = shiftChords.suffix(7) + [event.timestamp] }
+                else if scrolledSinceShift { shiftChords = shiftChords.suffix(255) + [event.timestamp] }
                 lock.unlock()
             }
             if tag != replayTag, releaseIfStalled(postAtTap: postAtTap), let postAtTap {
@@ -602,7 +612,12 @@ final class KeyboardMonitor {
             let now = TimeInterval(event.timestamp) / 1_000_000_000
             let clean = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
             // Scrolls never reach main: the tap marks each release that ended a Shift+scroll.
-            lock.lock(); let chord = shiftChords.contains(event.timestamp); lock.unlock()
+            // Each mark is removed once observed, so a backlog of chords cannot push out an unseen one.
+            lock.lock()
+            let chordIndex = shiftChords.firstIndex(of: event.timestamp)
+            if let chordIndex { shiftChords.remove(at: chordIndex) }
+            lock.unlock()
+            let chord = chordIndex != nil
             if flags.contains(.maskShift) {
                 shiftGesture.press(key: UInt16(key), at: now, clean: clean)
             } else if shiftGesture.release(key: UInt16(key), at: now, clean: clean), !chord {
@@ -648,6 +663,7 @@ final class KeyboardMonitor {
             }
             return
         }
+        if key == 49 || key == 36 || key == 76 || key == 48 || key == 53 || (123...126).contains(key) { composing = false }
         // A word followed by Tab is finished, like one followed by Space; Tab itself is held.
         if key == 48, !token.isEmpty {
             let completed = snapshot(revision: revision)
@@ -676,6 +692,12 @@ final class KeyboardMonitor {
               let string = layout.character(key: UInt16(key), shift: flags.contains(.maskShift),
                                             capsLock: flags.contains(.maskAlphaShift))
         else { token = ""; return }
+        // The application composes a dead key with the next one (c a f ' e is café on US
+        // International). Counting keys would then erase a character before the word: leave it.
+        if composing || layout.isDeadKey(key: UInt16(key), shift: flags.contains(.maskShift),
+                                         capsLock: flags.contains(.maskAlphaShift)) {
+            composing = true; token = ""; physicalKeys = []; onCancelAnalysis?(); return
+        }
         guard !string.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               token.count + string.count <= 512 else { token = ""; return }
         token += string

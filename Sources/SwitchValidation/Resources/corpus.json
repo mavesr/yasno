@@ -1271,6 +1271,11 @@
       "ABC",
       "Tasttaturen",
       "Tastaturen"
+    ],
+    [
+      "ABC",
+      "teh",
+      "the"
     ]
   ],
   "protected": [
@@ -1299,7 +1304,6 @@
     "👩‍💻",
     "привет🙂",
     "hello​world",
-    "teh",
     "form",
     "from",
     "quiet",

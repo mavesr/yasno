@@ -118,7 +118,10 @@ final class AppModel: ObservableObject {
         ) { [weak self] _ in
             guard let self else { return }
             let pid = AccessibleEditor.typingApplication()?.processIdentifier ?? 0
-            if pid != self.activePID { self.activePID = pid; self.monitor.syncApplication(pid) }
+            if pid != self.activePID {
+                self.activePID = pid; self.monitor.syncApplication(pid)
+                SystemLexicon.shared.forget()
+            }
             self.refresh()
         }
         // Caramba is tracked by launch/termination notifications instead of enumerating
@@ -229,7 +232,7 @@ final class AppModel: ObservableObject {
         if accessibility, let pid = app?.processIdentifier, pid != observedPID { observeFocus(pid: pid) }
         let excluded = app?.bundleIdentifier.map { excludedApps[$0] != nil } ?? false
         let nextStatus: String
-        if !enabled { nextStatus = "На паузе" }
+        if !enabled { nextStatus = "На паузе"; SystemLexicon.shared.forget() }
         else if carambaRunning { nextStatus = "Завершите Caramba" }
         else if !accessibility || !inputMonitoring { nextStatus = "Нужны разрешения macOS" }
         else if secureInput { nextStatus = "Защищённый ввод" }

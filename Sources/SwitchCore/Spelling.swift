@@ -159,9 +159,11 @@ extension Detector {
                   }) else { return nil }
         }
         // A capital inside a sentence marks a name (Shaikh, Балеевой), except for German
-        // nouns, which are capitalized everywhere.
+        // nouns, which are capitalized everywhere. The Latin layouts write English as well,
+        // so a word English also has (Nirmal → Normal, Agence → Agency) needs a German sentence.
         if core.first?.isUppercase == true, Self.isInsideSentence(context),
-           !(best.target.languages.contains(.german) && rank(best.text, languages: [.german]) != nil) { return nil }
+           !(best.target.languages.contains(.german) && rank(best.text, languages: [.german]) != nil
+             && (rank(best.text, languages: [.english]) == nil || leansGerman(context))) { return nil }
         let identical = candidates.filter { $0.text == best.text }
         let contextual = spellingContextPreference(context, candidates: identical.map(\.target)) ?? preferredTargetID
         let chosen: Candidate
@@ -174,6 +176,19 @@ extension Detector {
         guard !ignored.contains(output.lowercased()), !ignored.contains(WordText.canonical(output.lowercased())) else { return nil }
         return Suggestion(original: word, replacement: output + suffix, target: chosen.target,
                           score: log10(50_001 / Double(chosen.rank)))
+    }
+
+    /// The last words of the sentence are clearly more German than English.
+    func leansGerman(_ context: String) -> Bool {
+        let sentence = context.reversed().prefix(while: { !".!?\n".contains($0) }).reversed()
+        var score = 0
+        for raw in String(sentence).split(whereSeparator: \.isWhitespace).suffix(6) {
+            let word = String(raw).trimmingCharacters(in: .punctuationCharacters)
+            let german = rank(word, languages: [.german]), english = rank(word, languages: [.english])
+            if let german, english.map({ german * 4 < $0 }) ?? true { score += 1 }
+            if let english, german.map({ english * 4 < $0 }) ?? true { score -= 1 }
+        }
+        return score > 0
     }
 
     /// How much likelier the best of several close words must be. Chosen on the

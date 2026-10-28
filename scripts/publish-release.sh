@@ -23,11 +23,21 @@ trap 'rm -rf "$YASNO_CHECK"' EXIT
 ditto -x -k "$YASNO_ZIP" "$YASNO_CHECK"
 YASNO_APP="$YASNO_CHECK/Ясно.app"
 codesign --verify --deep --strict "$YASNO_APP"
-codesign -dv --verbose=4 "$YASNO_APP" 2>&1 | grep -q 'Authority=Developer ID Application:'
+# Not a pipe into grep -q: with pipefail its early exit fails codesign with SIGPIPE.
+if [[ "$(codesign -dv --verbose=4 "$YASNO_APP" 2>&1)" != *'Authority=Developer ID Application:'* ]]; then
+    print -u2 'The archive is not signed with Developer ID.'
+    exit 1
+fi
 codesign --verify --requirement '=notarized' "$YASNO_APP"
 xcrun stapler validate "$YASNO_APP"
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_APP/Contents/Info.plist")" == "$YASNO_VERSION" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :YasnoUpdateRepository' "$YASNO_APP/Contents/Info.plist")" == "$YASNO_REPO" ]]
+if [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_APP/Contents/Info.plist")" != "$YASNO_VERSION" ]]; then
+    print -u2 "The archive does not contain version $YASNO_VERSION."
+    exit 1
+fi
+if [[ "$(/usr/libexec/PlistBuddy -c 'Print :YasnoUpdateRepository' "$YASNO_APP/Contents/Info.plist")" != "$YASNO_REPO" ]]; then
+    print -u2 "The archive does not update from $YASNO_REPO."
+    exit 1
+fi
 
 gh release create "v$YASNO_VERSION" "$YASNO_ZIP" "$YASNO_DMG" \
     --repo "$YASNO_REPO" --title "Ясно $YASNO_VERSION" \

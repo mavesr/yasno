@@ -24,8 +24,8 @@ cat > "$YASNO_APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>Ясно</string>
 <key>CFBundleDisplayName</key><string>Ясно</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.2.19</string>
-<key>CFBundleVersion</key><string>31</string>
+<key>CFBundleShortVersionString</key><string>0.2.20</string>
+<key>CFBundleVersion</key><string>32</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>

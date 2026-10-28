@@ -5,6 +5,7 @@ import Carbon
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var model: AppModel!
+    private var updater: Updater!
     private var window: NSWindow!
     private var statusItem: NSStatusItem!
     private var statusLabel: NSMenuItem!
@@ -21,7 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.setActivationPolicy(.accessory)
         model = AppModel()
-        window = NSWindow(contentViewController: NSHostingController(rootView: MainView(model: model)))
+        updater = Updater()
+        updater.onInstalled = { NSApp.terminate(nil) }
+        window = NSWindow(contentViewController: NSHostingController(rootView: MainView(model: model, updater: updater)))
         window.title = "Ясно"
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.isReleasedWhenClosed = false
@@ -35,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Открыть Ясно…", action: #selector(showWindow), to: menu)
         pauseItem = add("Приостановить", action: #selector(toggleEnabled), to: menu)
         add("Не работать в этом приложении", action: #selector(excludeApp), to: menu)
+        if updater.available { add("Проверить обновления", action: #selector(checkForUpdates), to: menu) }
         menu.addItem(.separator())
         add("Завершить Ясно", action: #selector(quit), to: menu)
         statusItem.menu = menu
@@ -63,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showWindow() { window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc private func toggleEnabled() { model.enabled.toggle() }
     @objc private func excludeApp() { model.excludeFrontmost() }
+    @objc private func checkForUpdates() { updater.check(); showWindow() }
     @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }

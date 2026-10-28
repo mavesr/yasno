@@ -107,6 +107,8 @@ PY
     xcrun stapler validate "$YASNO_APP"
     spctl --assess --type execute --verbose=2 "$YASNO_APP"
     YASNO_STATUS=notarized
+    # The stapled app alone is the update archive the running copies download from GitHub.
+    ditto -c -k --keepParent "$YASNO_APP" "$YASNO_STAGE/Yasno-$YASNO_VERSION-universal.zip"
     print -r -- "Приложение Ясно $YASNO_VERSION проверено Apple.
 Завершается упаковка и отдельная проверка DMG." > "$YASNO_ROOT/dist/Нотарификация.txt"
 fi
@@ -143,6 +145,9 @@ if [[ -n "${YASNO_NOTARY_PROFILE:-}" ]]; then
     spctl --assess --type open --context context:primary-signature --verbose=2 "$YASNO_DMG"
 fi
 mv -f "$YASNO_DMG" "$YASNO_ROOT/dist/${YASNO_DMG:t}"
+if [[ -f "$YASNO_STAGE/Yasno-$YASNO_VERSION-universal.zip" ]]; then
+    mv -f "$YASNO_STAGE/Yasno-$YASNO_VERSION-universal.zip" "$YASNO_ROOT/dist/"
+fi
 YASNO_DMG="$YASNO_ROOT/dist/${YASNO_DMG:t}"
 (cd "$YASNO_ROOT/dist" && shasum -a 256 "${YASNO_DMG:t}" > "${YASNO_DMG:t}.sha256")
 if [[ -n "${YASNO_NOTARY_PROFILE:-}" ]]; then

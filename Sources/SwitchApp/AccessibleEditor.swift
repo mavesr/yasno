@@ -43,8 +43,17 @@ struct AccessibleEditor {
         guard let attribute = attribute(bundleID: running?.bundleIdentifier, bundleURL: running?.bundleURL,
                                         manualSettable: supported) else { return }
         // The shell may report an error even though it switched modes; the mode is what counts.
-        _ = AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue)
-        preparedLock.lock(); prepared[pid] = attribute; preparedLock.unlock()
+        let mode = Self.attribute(attribute, after: AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue))
+        if mode != attribute { _ = AXUIElementSetAttributeValue(app, mode, kCFBooleanTrue) }
+        preparedLock.lock(); prepared[pid] = mode; preparedLock.unlock()
+    }
+
+    /// Chrome 156 no longer knows AXManualAccessibility: it answers kAXErrorAttributeUnsupported,
+    /// builds no web AX tree, and no field in a page can be read. AXEnhancedUserInterface still
+    /// builds it, though setting it reports an error too.
+    static func attribute(_ attribute: CFString, after result: AXError) -> CFString {
+        guard result == .attributeUnsupported, attribute == "AXManualAccessibility" as CFString else { return attribute }
+        return "AXEnhancedUserInterface" as CFString
     }
 
     /// The attribute that makes this application build its web AX tree, or nil for a native one.

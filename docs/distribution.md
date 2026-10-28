@@ -84,8 +84,8 @@ spctl --assess --type open --context context:primary-signature --verbose=2 \
   а не во временном пути App Translocation.
 
 Замена выполняется атомарно на месте (`/Applications/Ясно.app` остаётся тем же
-путём), затем Ясно перезапускается. Локальная сборка с Apple Development и
-версия из App Store (в ней нет ключа `YasnoUpdateRepository`) не обновляются.
+путём), затем Ясно перезапускается. Локальная сборка с Apple Development
+не обновляется.
 
 ### Публикация выпуска
 

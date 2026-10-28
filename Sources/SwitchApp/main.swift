@@ -12,8 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pauseItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // The website and App Store editions have different IDs; two taps would correct every word twice.
-        let others = Set(["local.yasno.switcher", "com.mavesr.yasno", Bundle.main.bundleIdentifier].compactMap { $0 })
+        // Another running copy would correct every word twice.
+        let others = Set(["local.yasno.switcher", Bundle.main.bundleIdentifier].compactMap { $0 })
             .flatMap(NSRunningApplication.runningApplications(withBundleIdentifier:))
         if let existing = others.first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }) {
             existing.activate(options: [])

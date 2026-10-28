@@ -17,7 +17,7 @@ final class KeystrokeCorrectionTests: XCTestCase {
         return AppModel.keystrokeEdit(for: token, suggestion: suggestion, source: source, blind: blind)
     }
 
-    func testLayoutRepairIsTypedInBothBuilds() throws {
+    func testLayoutRepairIsTypedWhetherOrNotTheFieldIsSeen() throws {
         let (abc, ru) = try layouts()
         for blind in [false, true] {
             XCTAssertEqual(edit("ghbdtn", "привет", target: ru, source: abc, blind: blind),
@@ -35,7 +35,7 @@ final class KeystrokeCorrectionTests: XCTestCase {
     }
 
     func testLoneLetterIsConvertedOnlyWhereTheFieldIsKnown() throws {
-        // In the App Store build R then Space may be a canvas shortcut: Backspace would delete the selection.
+        // Over Screen Sharing R then Space may be a canvas shortcut: Backspace would delete the selection.
         let (abc, ru) = try layouts()
         XCTAssertNil(edit("r", "к", target: ru, source: abc, blind: true))
         XCTAssertEqual(edit("r", "к", target: ru, source: abc, blind: false), KeystrokeEdit(deletions: 2, insertion: "к "))

@@ -40,21 +40,13 @@ struct MainView: View {
             }.padding(18).background(.background, in: RoundedRectangle(cornerRadius: 16))
             VStack(alignment: .leading, spacing: 16) {
                 feature("text.cursor", title: "Во время набора", subtitle: "Исправляет уверенно распознанное слово и адрес сайта до пробела. Короткие и неоднозначные слова проверяет при завершении.")
-                feature("arrow.uturn.backward", title: "Один короткий Shift", subtitle: AccessibleEditor.blind
-                    ? "Преобразует только что набранное слово. После автозамены — отмена. В пустом поле — следующий язык."
-                    : "Преобразует слово, символ или выделение. После замены буквы — только новый фрагмент. После автозамены — отмена. В пустом поле — следующий язык.")
-                feature("character.bubble", title: "Русский и украинский отдельно", subtitle: AccessibleEditor.blind
-                    ? "При неоднозначности — ваш выбор языка; правильные слова сохраняются."
-                    : "Короткие слова учитывают соседний текст. При неоднозначности — ваш выбор языка; правильные слова сохраняются.")
+                feature("arrow.uturn.backward", title: "Один короткий Shift", subtitle: "Преобразует слово, символ или выделение. После замены буквы — только новый фрагмент. После автозамены — отмена. В пустом поле — следующий язык.")
+                feature("character.bubble", title: "Русский и украинский отдельно", subtitle: "Короткие слова учитывают соседний текст. При неоднозначности — ваш выбор языка; правильные слова сохраняются.")
             }
             Divider()
             VStack(alignment: .leading, spacing: 4) {
                 Toggle("Исправлять опечатки", isOn: $model.correctSpelling).toggleStyle(.checkbox)
-                // The App Store build cannot read the field, where the application may already have
-                // fixed the typo itself: only a word typed in the wrong layout is respelled there.
-                Text(AccessibleEditor.blind
-                     ? "В словах, набранных не в той раскладке · после пробела · короткий Shift — отменить"
-                     : "После пробела · только однозначные варианты · короткий Shift — отменить")
+                Text("После пробела · только однозначные варианты · короткий Shift — отменить")
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack {

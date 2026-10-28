@@ -46,6 +46,8 @@ YASNO_PLIST="$YASNO_APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $YASNO_BUNDLE_ID" "$YASNO_PLIST"
 /usr/libexec/PlistBuddy -c 'Add :LSApplicationCategoryType string public.app-category.productivity' "$YASNO_PLIST"
 /usr/libexec/PlistBuddy -c 'Add :ITSAppUsesNonExemptEncryption bool false' "$YASNO_PLIST"
+# The App Store updates this edition; the GitHub updater stays off.
+/usr/libexec/PlistBuddy -c 'Delete :YasnoUpdateRepository' "$YASNO_PLIST"
 # App Store Connect needs a new build number for every upload of the same version.
 if [[ -n "${YASNO_APPSTORE_BUILD:-}" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $YASNO_APPSTORE_BUILD" "$YASNO_PLIST"

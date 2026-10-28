@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var updater: Updater
     @State private var showExceptions = false
     @Environment(\.colorScheme) private var colorScheme
     private var accent: Color {
@@ -60,6 +61,17 @@ struct MainView: View {
                 Toggle("Запускать при входе", isOn: Binding(get: { model.loginEnabled }, set: { _ in model.toggleLogin() })).toggleStyle(.checkbox)
                 Spacer()
                 Button("Исключения…") { showExceptions = true }
+            }
+            if updater.available {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Toggle("Обновлять автоматически", isOn: $updater.automatic).toggleStyle(.checkbox)
+                        Spacer()
+                        Button("Проверить сейчас") { updater.check() }.disabled(updater.busy)
+                    }
+                    Text(updater.message.isEmpty ? "Каждый день в 21:00 с GitHub · разрешения macOS сохраняются" : updater.message)
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if !model.detail.isEmpty {
                 Text(model.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -10,7 +10,7 @@ import os
 /// of the running copy, is notarized, and replaces the bundle in place at the same path.
 /// Anything else (a development build, a moved or translocated copy, the App Store edition)
 /// leaves the installed application untouched.
-final class Updater: ObservableObject {
+@MainActor final class Updater: ObservableObject {
     struct Release: Equatable {
         let version: String
         let archive: URL
@@ -33,7 +33,7 @@ final class Updater: ObservableObject {
 
     /// "owner/name" of the public repository with release archives; nil disables updates.
     let repository: String?
-    static let checkHour = 21
+    nonisolated static let checkHour = 21
     private let log = Logger(subsystem: "local.yasno.switcher", category: "update")
     private var timer: Timer?
     private var wakeObserver: NSObjectProtocol?
@@ -46,33 +46,28 @@ final class Updater: ObservableObject {
         guard repository != nil else { return }
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.schedule() }
+        ) { [weak self] _ in MainActor.assumeIsolated { self?.schedule() } }
         schedule()
-    }
-
-    deinit {
-        timer?.invalidate()
-        if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
     }
 
     var available: Bool { repository != nil }
 
     // MARK: Schedule
 
-    static func repository(info: [String: Any], sandboxed: Bool) -> String? {
+    nonisolated static func repository(info: [String: Any], sandboxed: Bool) -> String? {
         guard !sandboxed, let value = info["YasnoUpdateRepository"] as? String else { return nil }
         let parts = value.split(separator: "/")
         return parts.count == 2 && parts.allSatisfy({ !$0.isEmpty }) ? value : nil
     }
 
     /// The first `hour`:00 strictly after `date`.
-    static func nextCheck(after date: Date, hour: Int = checkHour, calendar: Calendar = .current) -> Date {
+    nonisolated static func nextCheck(after date: Date, hour: Int = checkHour, calendar: Calendar = .current) -> Date {
         calendar.nextDate(after: date, matching: DateComponents(hour: hour, minute: 0, second: 0),
                           matchingPolicy: .nextTime) ?? date.addingTimeInterval(86_400)
     }
 
     /// Whether a check at `hour`:00 was missed (the Mac slept or the application was not running).
-    static func missedCheck(lastCheck: Date?, now: Date, hour: Int = checkHour, calendar: Calendar = .current) -> Bool {
+    nonisolated static func missedCheck(lastCheck: Date?, now: Date, hour: Int = checkHour, calendar: Calendar = .current) -> Bool {
         let latest = calendar.nextDate(after: now, matching: DateComponents(hour: hour, minute: 0, second: 0),
                                        matchingPolicy: .nextTime, direction: .backward) ?? now
         guard let lastCheck else { return true }
@@ -86,7 +81,7 @@ final class Updater: ObservableObject {
         let last = UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date
         // A missed 21:00 is caught up a few minutes after launch or wake, once the network is up.
         let fire = Self.missedCheck(lastCheck: last, now: now) ? now.addingTimeInterval(300) : Self.nextCheck(after: now)
-        let timer = Timer(fire: fire, interval: 0, repeats: false) { [weak self] _ in self?.check(automatic: true) }
+        let timer = Timer(fire: fire, interval: 0, repeats: false) { [weak self] _ in MainActor.assumeIsolated { self?.check(automatic: true) } }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
@@ -103,7 +98,7 @@ final class Updater: ObservableObject {
             do { result = .success(try await Self.latestNewer(repository: repository, current: Self.currentVersion)) }
             catch let error as UpdateError { result = .failure(error) }
             catch { result = .failure(.network(error.localizedDescription)) }
-            await MainActor.run { self?.finishCheck(result, automatic: automatic) }
+            self?.finishCheck(result, automatic: automatic)
         }
     }
 
@@ -125,11 +120,11 @@ final class Updater: ObservableObject {
         }
     }
 
-    static var currentVersion: String {
+    nonisolated static var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
 
-    static func latestNewer(repository: String, current: String) async throws -> Release? {
+    nonisolated static func latestNewer(repository: String, current: String) async throws -> Release? {
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/\(repository)/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("Yasno/\(current)", forHTTPHeaderField: "User-Agent")
@@ -146,7 +141,7 @@ final class Updater: ObservableObject {
 
     /// The release version comes from the tag ("v0.2.21" or "0.2.21"); the archive is the single
     /// application zip. Drafts and prereleases are never installed.
-    static func parse(_ data: Data) throws -> Release? {
+    nonisolated static func parse(_ data: Data) throws -> Release? {
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = object["tag_name"] as? String else { throw UpdateError.noArchive }
         if object["draft"] as? Bool == true || object["prerelease"] as? Bool == true { return nil }
@@ -162,13 +157,13 @@ final class Updater: ObservableObject {
         return Release(version: version, archive: url)
     }
 
-    static func components(_ version: String) -> [Int]? {
+    nonisolated static func components(_ version: String) -> [Int]? {
         let parts = version.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
         guard !parts.isEmpty, parts.allSatisfy({ $0 != nil && $0! >= 0 }) else { return nil }
         return parts.map { $0! }
     }
 
-    static func isNewer(_ candidate: String, than current: String) -> Bool {
+    nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
         guard let new = components(candidate), let old = components(current) else { return false }
         for index in 0..<max(new.count, old.count) {
             let a = index < new.count ? new[index] : 0, b = index < old.count ? old[index] : 0
@@ -188,7 +183,7 @@ final class Updater: ObservableObject {
                 result = .success(())
             } catch let error as UpdateError { result = .failure(error) }
             catch { result = .failure(.network(error.localizedDescription)) }
-            await MainActor.run { self?.finishInstall(result, version: release.version) }
+            await self?.finishInstall(result, version: release.version)
         }
     }
 
@@ -206,7 +201,7 @@ final class Updater: ObservableObject {
         }
     }
 
-    static func download(_ release: Release, replacing target: URL) async throws {
+    nonisolated static func download(_ release: Release, replacing target: URL) async throws {
         try checkLocation(target)
         _ = try designatedRequirement()
         let files = FileManager.default
@@ -232,7 +227,7 @@ final class Updater: ObservableObject {
         _ = try files.replaceItemAt(target, withItemAt: app)
     }
 
-    static func checkLocation(_ target: URL) throws {
+    nonisolated static func checkLocation(_ target: URL) throws {
         // A translocated copy runs from a read-only random path; replacing it updates nothing.
         guard target.pathExtension == "app", !target.path.contains("/AppTranslocation/"),
               FileManager.default.isWritableFile(atPath: target.deletingLastPathComponent().path),
@@ -241,7 +236,7 @@ final class Updater: ObservableObject {
 
     /// The new copy must satisfy the designated requirement of this process (which TCC
     /// recorded with the permissions), be notarized, and carry the advertised version.
-    static func verify(_ app: URL, version: String) throws {
+    nonisolated static func verify(_ app: URL, version: String) throws {
         let requirement = try designatedRequirement()
         var staticCode: SecStaticCode?
         guard SecStaticCodeCreateWithPath(app as CFURL, [], &staticCode) == errSecSuccess, let staticCode else {
@@ -265,11 +260,13 @@ final class Updater: ObservableObject {
 
     /// The requirement TCC recorded for this copy. A development or ad-hoc build would lose
     /// the grants with any downloaded copy, so it is never replaced.
-    static func designatedRequirement() throws -> SecRequirement {
+    nonisolated static func designatedRequirement() throws -> SecRequirement {
         var current: SecCode?
         var requirement: SecRequirement?
+        var currentStatic: SecStaticCode?
         guard SecCodeCopySelf([], &current) == errSecSuccess, let current,
-              SecCodeCopyDesignatedRequirement(current, [], &requirement) == errSecSuccess, let requirement else {
+              SecCodeCopyStaticCode(current, [], &currentStatic) == errSecSuccess, let currentStatic,
+              SecCodeCopyDesignatedRequirement(currentStatic, [], &requirement) == errSecSuccess, let requirement else {
             throw UpdateError.signature("no designated requirement")
         }
         var text: CFString?
@@ -280,13 +277,13 @@ final class Updater: ObservableObject {
         return requirement
     }
 
-    static func isDeveloperID(_ requirement: String) -> Bool {
+    nonisolated static func isDeveloperID(_ requirement: String) -> Bool {
         // 1.2.840.113635.100.6.1.13 marks a Developer ID Application leaf certificate.
         requirement.contains("anchor apple generic") && requirement.contains("field.1.2.840.113635.100.6.1.13")
             && requirement.contains("certificate leaf[subject.OU]")
     }
 
-    @discardableResult static func run(_ tool: String, _ arguments: [String]) -> Bool {
+    @discardableResult nonisolated static func run(_ tool: String, _ arguments: [String]) -> Bool {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
         process.arguments = arguments
@@ -308,7 +305,7 @@ final class Updater: ObservableObject {
         onInstalled?()
     }
 
-    static func describe(_ error: UpdateError) -> String {
+    nonisolated static func describe(_ error: UpdateError) -> String {
         switch error {
         case .network: return "Не удалось связаться с GitHub. Повторю завтра в 21:00."
         case .noArchive: return "В новом выпуске нет архива приложения."

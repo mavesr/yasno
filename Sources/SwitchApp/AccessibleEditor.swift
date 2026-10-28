@@ -43,8 +43,17 @@ struct AccessibleEditor {
         guard let attribute = attribute(bundleID: running?.bundleIdentifier, bundleURL: running?.bundleURL,
                                         manualSettable: supported) else { return }
         // The shell may report an error even though it switched modes; the mode is what counts.
-        _ = AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue)
-        preparedLock.lock(); prepared[pid] = attribute; preparedLock.unlock()
+        let mode = Self.attribute(attribute, after: AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue))
+        if mode != attribute { _ = AXUIElementSetAttributeValue(app, mode, kCFBooleanTrue) }
+        preparedLock.lock(); prepared[pid] = mode; preparedLock.unlock()
+    }
+
+    /// Chrome 156 no longer knows AXManualAccessibility: it answers kAXErrorAttributeUnsupported,
+    /// builds no web AX tree, and no field in a page can be read. AXEnhancedUserInterface still
+    /// builds it, though setting it reports an error too.
+    static func attribute(_ attribute: CFString, after result: AXError) -> CFString {
+        guard result == .attributeUnsupported, attribute == "AXManualAccessibility" as CFString else { return attribute }
+        return "AXEnhancedUserInterface" as CFString
     }
 
     /// The attribute that makes this application build its web AX tree, or nil for a native one.
@@ -73,6 +82,11 @@ struct AccessibleEditor {
             let helpers = frameworks.appendingPathComponent(framework).appendingPathComponent("Helpers")
             return hasRenderer((try? files.contentsOfDirectory(atPath: helpers.path)) ?? [])
         }
+    }
+
+    /// A terminated process must not count as prepared: the system reuses its pid.
+    static func forgetPreparedApplication(pid: pid_t) {
+        preparedLock.lock(); prepared.removeValue(forKey: pid); preparedLock.unlock()
     }
 
     /// Return applications to their default accessibility mode at exit.
@@ -161,11 +175,16 @@ struct AccessibleEditor {
 
     /// The panel keeps the input source it had when it opened: a layout selected for the
     /// session never reaches its field, so only the words themselves can be corrected there.
-    var takesKeysInPanel: Bool { inputPID != pid }
+    static func takesKeysInPanel(receiver: pid_t, pid: pid_t) -> Bool { receiver != pid }
 
     /// The process that takes keys for this field: the panel service drawing the window the
-    /// field is in, else the application itself.
-    private var inputPID: pid_t {
+    /// field is in, else the application itself. Two AX requests and the whole window list
+    /// (several milliseconds): ask once per edit, on the worker, never on main.
+    var keyReceiver: pid_t {
+        // No panel service process, no panel: the common case costs no AX and no window list.
+        guard Self.panelServiceBundleIDs.contains(where: {
+            !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty
+        }) else { return pid }
         var raw: CFTypeRef?
         var origin = CGPoint.zero, size = CGSize.zero
         guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &raw) == .success,
@@ -317,10 +336,11 @@ struct AccessibleEditor {
         }
     }
 
+    /// `receiver` is this field's keyReceiver, read once by the caller.
     func replace(range: CFRange, expected: String, replacement: String,
                  caret: CFRange, stillValid: () -> Bool, commit: () -> Bool,
-                 deadline: TimeInterval? = nil) -> EditResult {
-        let inputPID = inputPID
+                 deadline: TimeInterval? = nil, receiver: pid_t) -> EditResult {
+        let inputPID = receiver
         return ReplacementTransaction.run(range: range, expected: expected, replacement: replacement, caret: caret,
             stillValid: stillValid, commit: commit, environment: .init(
                 selection: { selection }, text: { text(in: $0) }, focused: { isFocused() },

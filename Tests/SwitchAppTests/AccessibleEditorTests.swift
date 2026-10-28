@@ -1,4 +1,5 @@
 import XCTest
+import ApplicationServices
 @testable import SwitchApp
 
 final class AccessibleEditorTests: XCTestCase {
@@ -39,6 +40,18 @@ final class AccessibleEditorTests: XCTestCase {
                                  try bundle(["Electron Framework.framework", "Slack Helper (Renderer).app"])), "AXManualAccessibility")
         XCTAssertNil(attribute("com.apple.TextEdit", try bundle(["Sparkle.framework/Helpers/Updater.app"])))
         XCTAssertNil(attribute(nil, nil))
+    }
+
+    func testChromeThatRefusesManualAccessibilityGetsEnhancedUserInterface() {
+        func mode(_ attribute: String, _ result: AXError) -> String {
+            AccessibleEditor.attribute(attribute as CFString, after: result) as String
+        }
+        // Chrome 156 answers kAXErrorAttributeUnsupported and builds no web tree.
+        XCTAssertEqual(mode("AXManualAccessibility", .attributeUnsupported), "AXEnhancedUserInterface")
+        XCTAssertEqual(mode("AXManualAccessibility", .success), "AXManualAccessibility")
+        // Other errors do not say the attribute is gone: the shell may have switched anyway.
+        XCTAssertEqual(mode("AXManualAccessibility", .cannotComplete), "AXManualAccessibility")
+        XCTAssertEqual(mode("AXEnhancedUserInterface", .notImplemented), "AXEnhancedUserInterface")
     }
 
     func testLongFieldIsNotCopiedToLearnItShowsText() {

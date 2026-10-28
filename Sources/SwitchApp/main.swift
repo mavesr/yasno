@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func showWindow() { window?.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true) }
     @objc private func toggleEnabled() { model.enabled.toggle() }
     @objc private func excludeApp() { model.excludeFrontmost() }
-    @objc private func checkForUpdates() { updater.check(); showWindow() }
+    @MainActor @objc private func checkForUpdates() { updater.check(); showWindow() }
     @objc private func quit() { NSApp.terminate(nil) }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }

@@ -596,6 +596,25 @@ public final class Detector {
         }
     }
 
+    /// Typing stopped on a word too short to switch while it is typed. A search field
+    /// (Countries on Unity: гыф → usa) gets no Space to check it, so it is checked as a
+    /// complete word, unless it may still grow into a native word (рус → руслан).
+    public func suggestAfterPause(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],
+                                  ignored: Set<String> = [], preferredTargetID: String? = nil,
+                                  context: String = "") -> Suggestion? {
+        guard (2...3).contains(word.count), !isNativePrefix(word, languages: source.languages) else { return nil }
+        return suggest(word, source: source, layouts: liveTargets(layouts, source: source), ignored: ignored,
+                       preferredTargetID: preferredTargetID, context: context, live: true)
+    }
+
+    public func maySuggestAfterPause(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],
+                                     ignored: Set<String> = []) -> Bool {
+        layouts.contains { target in
+            target.id != source.id && suggestAfterPause(word, source: source, layouts: layouts,
+                                                        ignored: ignored, preferredTargetID: target.id) != nil
+        }
+    }
+
     /// Frequency corpora include initials (b, f, z). Only actual one-letter words
     /// count here; valid source words remain unchanged, including English a and I.
     private func suggestSingleLetter(_ word: String, source: KeyboardLayout, layouts: [KeyboardLayout],

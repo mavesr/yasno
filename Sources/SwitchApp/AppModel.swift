@@ -47,6 +47,7 @@ final class AppModel: ObservableObject {
     private var receipt: Receipt?
     private var typingTask: DispatchWorkItem?
     private var pendingTypingToken: KeyboardMonitor.Token?
+    private var pauseTask: DispatchWorkItem?
     private var focusObserver: AXObserver?
     private var observedPID: pid_t = 0
     private var activePID: pid_t = 0
@@ -312,6 +313,7 @@ final class AppModel: ObservableObject {
 
     private func cancelTypingTask() {
         typingTask?.cancel(); typingTask = nil; pendingTypingToken = nil
+        pauseTask?.cancel(); pauseTask = nil
     }
 
     private func progress(_ token: KeyboardMonitor.Token) {
@@ -322,6 +324,18 @@ final class AppModel: ObservableObject {
         }
         receipt = nil
         pendingTypingToken = token
+        pauseTask?.cancel(); pauseTask = nil
+        // A short word is checked only by Space, which a search field never gets (Countries:
+        // гыф → usa). Once typing stops on it, it is checked as complete.
+        if (2...3).contains(token.text.count) {
+            let task = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.pauseTask = nil
+                self.process(token, whileTyping: true, paused: true)
+            }
+            pauseTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: task)
+        }
         guard typingTask == nil, token.text.count >= 4 else { return }
         // Coalesce bursts without postponing until typing stops. A long continuous
         // word can be corrected at the next tick, with subsequent keys held/replayed.
@@ -355,7 +369,7 @@ final class AppModel: ObservableObject {
             sourceID: previous.sourceID, layoutID: previous.layoutID, cycle: nil, live: true)
     }
 
-    private func process(_ token: KeyboardMonitor.Token, whileTyping: Bool = false) {
+    private func process(_ token: KeyboardMonitor.Token, whileTyping: Bool = false, paused: Bool = false) {
         if !whileTyping { cancelTypingTask() }
         if token.liveConverted {
             updateLiveReceipt(token)
@@ -367,27 +381,28 @@ final class AppModel: ObservableObject {
         // Typing pauses are frequent and almost always negative, so check before
         // gating: a negative result never holds input. A key typed meanwhile changes
         // the revision, beginGate refuses, and the next pause retries.
-        let request = self.request(for: token, source: source, whileTyping: true)
+        let request = self.request(for: token, source: source, whileTyping: true, paused: paused)
         worker.async { [self] in
             guard monitor.revision == token.revision, detector.mayCorrect(request) else { return }
-            DispatchQueue.main.async { self.correct(token, whileTyping: true) }
+            DispatchQueue.main.async { self.correct(token, whileTyping: true, paused: paused) }
         }
     }
 
-    private func request(for token: KeyboardMonitor.Token, source: KeyboardLayout, whileTyping: Bool) -> CorrectionRequest {
+    private func request(for token: KeyboardMonitor.Token, source: KeyboardLayout, whileTyping: Bool,
+                         paused: Bool = false) -> CorrectionRequest {
         // The token already names the application that took its keys. Asking Accessibility
         // again here, on main, cost 0.4–16 ms on every live tick.
         let bundle = NSRunningApplication(processIdentifier: token.pid)?.bundleIdentifier ?? ""
         return CorrectionRequest(text: token.text, source: source, layouts: layouts, ignored: ignored,
                                  preferredTargetID: preferred[bundle] ?? globalPreferred,
                                  correctSpelling: correctSpelling, whileTyping: whileTyping,
-                                 liveConverted: token.liveConverted)
+                                 liveConverted: token.liveConverted, paused: paused)
     }
 
-    private func correct(_ token: KeyboardMonitor.Token, whileTyping: Bool, settled: Bool = false) {
+    private func correct(_ token: KeyboardMonitor.Token, whileTyping: Bool, settled: Bool = false, paused: Bool = false) {
         guard monitor.enabled, monitor.revision == token.revision,
               let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
-        let request = self.request(for: token, source: source, whileTyping: whileTyping)
+        let request = self.request(for: token, source: source, whileTyping: whileTyping, paused: paused)
         // A gate opened before the dictionaries are parsed would hold input behind the load.
         guard detectorLoaded.withLock({ $0 }) else { return }
         // Reserve before returning to the event stream, including replayed Space.
@@ -419,7 +434,7 @@ final class AppModel: ObservableObject {
             if whileTyping, !settled, inPanel() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     guard self.monitor.revision == token.revision else { return }
-                    self.correct(token, whileTyping: true, settled: true)
+                    self.correct(token, whileTyping: true, settled: true, paused: paused)
                 }
                 return
             }

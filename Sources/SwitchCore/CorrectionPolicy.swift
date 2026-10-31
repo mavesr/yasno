@@ -13,19 +13,22 @@ public struct CorrectionRequest {
     public let whileTyping: Bool
     /// The word was already converted while typing and is being continued.
     public let liveConverted: Bool
+    /// Typing stopped on a word too short to be checked while it is typed.
+    public let paused: Bool
 
     public init(text: String, source: KeyboardLayout, layouts: [KeyboardLayout], ignored: Set<String> = [],
-                preferredTargetID: String?, correctSpelling: Bool, whileTyping: Bool, liveConverted: Bool = false) {
+                preferredTargetID: String?, correctSpelling: Bool, whileTyping: Bool, liveConverted: Bool = false,
+                paused: Bool = false) {
         // An exception written with one apostrophe also covers the others (п'ятниця, п’ятниця).
         self.text = text; self.source = source; self.layouts = layouts
         self.ignored = ignored.union(ignored.map { WordText.canonical($0.lowercased()) })
         self.preferredTargetID = preferredTargetID; self.correctSpelling = correctSpelling
-        self.whileTyping = whileTyping; self.liveConverted = liveConverted
+        self.whileTyping = whileTyping; self.liveConverted = liveConverted; self.paused = paused
     }
 
     func with(text: String) -> CorrectionRequest {
         CorrectionRequest(text: text, source: source, layouts: layouts, ignored: ignored, preferredTargetID: preferredTargetID,
-                          correctSpelling: correctSpelling, whileTyping: whileTyping, liveConverted: liveConverted)
+                          correctSpelling: correctSpelling, whileTyping: whileTyping, liveConverted: liveConverted, paused: paused)
     }
 
     /// The whole text as typed is an exception, checked before any symbols around it are
@@ -67,6 +70,9 @@ extension Detector {
             return suggestSpelling(request.text, source: request.source, layouts: request.layouts,
                                    ignored: request.ignored, preferredTargetID: request.preferredTargetID) != nil
         }
+        if request.whileTyping, request.paused {
+            return maySuggestAfterPause(request.text, source: request.source, layouts: request.layouts, ignored: request.ignored)
+        }
         return request.whileTyping
             ? maySuggestWhileTyping(request.text, source: request.source, layouts: request.layouts,
                                     ignored: request.ignored, spellingAware: request.correctSpelling)
@@ -91,6 +97,10 @@ extension Detector {
             guard !request.whileTyping, request.correctSpelling else { return nil }
             return suggestSpelling(request.text, source: request.source, layouts: request.layouts,
                                    ignored: request.ignored, preferredTargetID: request.preferredTargetID, context: context)
+        }
+        if request.whileTyping, request.paused {
+            return suggestAfterPause(request.text, source: request.source, layouts: request.layouts, ignored: request.ignored,
+                                     preferredTargetID: request.preferredTargetID, context: context)
         }
         return request.whileTyping
             ? suggestWhileTyping(request.text, source: request.source, layouts: request.layouts, ignored: request.ignored,

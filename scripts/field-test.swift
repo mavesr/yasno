@@ -54,7 +54,10 @@ let cases: [String: Case] = [
     // point is only that Ясно forgets the word on the change and corrupts nothing; run it on its
     // own with @switch and read the log, do not assert the field's text.
     "switch-mid-word": Case(layout: "ABC", keys: "ghb⌨dtn ", expected: "ghbвет "),
-    "tab": Case(layout: "ABC", keys: "ghbdtn⇥vbh ", expected: "привет\tмир "),
+    // Tab finishes the word, like Space. A native text view keeps focus and inserts a tab; a
+    // browser moves focus out of the field. Either way the word before Tab is corrected, so the
+    // case types only up to Tab and the field reads «привет» (a trailing tab is trimmed).
+    "tab": Case(layout: "ABC", keys: "ghbdtn⇥", expected: "привет"),
     "mid-line": Case(layout: "ABC", keys: "aaa bbb←←←ghbdtn ", expected: "aaa привет bbb"),
     "secure": Case(layout: "ABC", keys: "ghbdtn ", expected: "ghbdtn "),
 ]

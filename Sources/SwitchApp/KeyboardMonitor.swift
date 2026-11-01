@@ -12,6 +12,10 @@ final class KeyboardMonitor {
         let revision: UInt64
         var liveConverted = false
         var physicalKeys: [KeyboardLayout.KeyStroke]? = nil
+        /// The application reported a focus change while this word was typed, so some of its
+        /// keys may have gone to another field. An exact replacement verifies the text at the
+        /// caret first; an edit that erases by count cannot and must not use this word.
+        var focusMoved = false
     }
     var onToken: ((Token) -> Void)?
     var onProgress: ((Token) -> Void)?
@@ -98,6 +102,7 @@ final class KeyboardMonitor {
     private let postEvent: (CGEvent) -> Void
     private let currentSourceID: () -> String
     private let currentPID: () -> pid_t
+    private var focusMovedDuringWord = false // Main only; see Token.focusMoved.
     private let secureInputEnabled: () -> Bool
 
     init(postEvent: @escaping (CGEvent) -> Void = { $0.post(tap: .cgSessionEventTap) },
@@ -149,7 +154,6 @@ final class KeyboardMonitor {
     func syncSource(_ id: String) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard sourceID != id else { return }
-        if !token.isEmpty { Trace.switching.info("layout changed mid-word: \(self.token.count) keys dropped") }
         reset()
         sourceID = id
     }
@@ -166,6 +170,19 @@ final class KeyboardMonitor {
     var pendingCount: Int {
         dispatchPrecondition(condition: .onQueue(.main))
         return token.count
+    }
+
+    /// The application announced its focused element or window. After coming to the front an
+    /// application does so 60–300 ms after the activation notification, often once the user has
+    /// started typing: those keys went to the field that has the focus now. The word is kept and
+    /// marked (see Token.focusMoved); a word already finished is no longer at the caret, and
+    /// work in flight for the old focus is invalidated.
+    func focusChanged() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        lock.lock(); generation &+= 1; lock.unlock()
+        completedToken = nil
+        if !token.isEmpty { focusMovedDuringWord = true }
+        onCancelAnalysis?()
     }
 
     /// Pass the revision given to beginGate. A gate already released by the watchdog
@@ -402,6 +419,7 @@ final class KeyboardMonitor {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock(); generation &+= 1; lock.unlock()
         token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; composing = false; shiftGesture.reset()
+        focusMovedDuringWord = false
         onCancelAnalysis?()
     }
 
@@ -412,11 +430,12 @@ final class KeyboardMonitor {
         self.sourceID = sourceID; self.pid = pid
         token = text; completedToken = nil; liveConverted = true
         physicalKeys = nil
+        focusMovedDuringWord = false // The replacement verified the field the word is in.
     }
 
     private func snapshot(suffix: String = "", revision: UInt64) -> Token {
         Token(text: token, suffix: suffix, sourceID: sourceID, pid: pid,
-              revision: revision, liveConverted: liveConverted, physicalKeys: physicalKeys)
+              revision: revision, liveConverted: liveConverted, physicalKeys: physicalKeys, focusMoved: focusMovedDuringWord)
     }
 
     /// Invoked on the dedicated tap thread; observation and app state stay on main.
@@ -642,6 +661,7 @@ final class KeyboardMonitor {
         if token.isEmpty {
             liveConverted = false
             physicalKeys = []
+            focusMovedDuringWord = false
             syncSource(currentSourceID())
             syncApplication(currentPID())
         }

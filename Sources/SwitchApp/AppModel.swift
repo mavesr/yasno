@@ -313,9 +313,11 @@ final class AppModel: ObservableObject {
                 sameElement = false
                 model.focusedElement = element
             } else { sameElement = true; model.focusedElement = nil }
-            let dropped = model.monitor.pendingCount
-            model.monitor.reset()
-            Trace.switching.info("focus notification \(notification as String, privacy: .public) windowOnly=\(sameElement) sinceActivation=\(Trace.milliseconds(since: model.lastActivation)) ms keysDropped=\(dropped)")
+            // Not a reset: an application announces its focus 60–300 ms after coming to the
+            // front, and the first letters of a word typed meanwhile used to be lost with it.
+            let pending = model.monitor.pendingCount
+            model.monitor.focusChanged()
+            Trace.switching.info("focus notification \(notification as String, privacy: .public) windowOnly=\(sameElement) sinceActivation=\(Trace.milliseconds(since: model.lastActivation)) ms keysKept=\(pending)")
         }
         guard AXObserverCreate(pid, callback, &observer) == .success, let observer else { return }
         let app = AXUIElementCreateApplication(pid)
@@ -444,7 +446,9 @@ final class AppModel: ObservableObject {
             let lookup = Trace.milliseconds(since: lookupStart)
             let canvasStart = ProcessInfo.processInfo.systemUptime
             if editor.isCanvasTypingTarget {
-                Trace.correction.info("canvas field pid=\(token.pid) live=\(whileTyping) lookup=\(lookup) ms canvas=\(Trace.milliseconds(since: canvasStart)) ms")
+                Trace.correction.info("canvas field pid=\(token.pid) live=\(whileTyping) focusMoved=\(token.focusMoved) lookup=\(lookup) ms canvas=\(Trace.milliseconds(since: canvasStart)) ms")
+                // Nothing can be read back here, and the focus moved while the word was typed.
+                guard !token.focusMoved else { return }
                 self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
                 return
             }
@@ -479,7 +483,8 @@ final class AppModel: ObservableObject {
                 stillValid: { self.monitor.revision == token.revision }) else {
                 let stale = self.monitor.revision != token.revision
                 Trace.correction.info("no caret pid=\(token.pid) live=\(whileTyping) stale=\(stale) lookup=\(lookup) ms canvas=\(canvas) ms wait=\(Trace.milliseconds(since: caretStart)) ms")
-                guard !stale else { return }
+                // The focus moved while the word was typed: the field may simply not hold it.
+                guard !stale, !token.focusMoved else { return }
                 // Another editor drawn on a canvas: the field still shows nothing typed.
                 if editor.exposesNoText {
                     self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
@@ -562,7 +567,8 @@ final class AppModel: ObservableObject {
     /// shortcut on a canvas or a shell command as a word, and only Shift converts it.
     static func keystrokeEdit(for token: KeyboardMonitor.Token, suggestion: Suggestion, source: KeyboardLayout,
                               blind: Bool) -> KeystrokeEdit? {
-        guard suggestion.target.id != source.id, !(blind && token.text.count == 1) else { return nil }
+        // Erasing by count needs every key of the word in this field: not after a focus change.
+        guard !token.focusMoved, suggestion.target.id != source.id, !(blind && token.text.count == 1) else { return nil }
         return KeystrokeEdit(typed: token.text, replacement: suggestion.replacement, suffix: token.suffix)
     }
 
@@ -718,6 +724,8 @@ final class AppModel: ObservableObject {
             }
             // A keystroke edit is undone with keystrokes too: such a field has nothing to read back.
             if editor.isCanvasTypingTarget || (receipt?.keystrokes != nil && receipt.map { CFEqual($0.editor.element, editor.element) } == true) {
+                // Some keys of the word may have gone to another field: nothing to erase by count.
+                guard expectedToken?.focusMoved != true else { return }
                 if !self.manualByKeystrokes(editor: editor, expectedToken: expectedToken, receipt: receipt, revision: revision,
                                             sourceID: sourceID, layouts: layouts, preferredID: preferredID, bundleID: app.bundleIdentifier) {
                     switchOnly()

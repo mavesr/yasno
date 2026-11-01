@@ -245,6 +245,11 @@ func clearField() {
         Thread.sleep(forTimeInterval: 0.25)
     }
     press(51)
+    // Backspace after a finished word reopens it in Ясно (the user erased the Space after it);
+    // here it erased a selection instead. An arrow key makes Ясно forget the word, as it would
+    // for a user who moved the caret.
+    Thread.sleep(forTimeInterval: 0.1)
+    press(124)
     Thread.sleep(forTimeInterval: 0.3)
 }
 func cyrillic(_ text: String) -> Bool { text.contains { ("а"..."я").contains($0) || ("А"..."Я").contains($0) || "іїєІЇЄёЁ".contains($0) } }

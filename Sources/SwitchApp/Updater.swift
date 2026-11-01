@@ -8,7 +8,7 @@ import os
 /// satisfies the designated requirement recorded for the old one (same Team ID and bundle
 /// identifier). So a download is installed only if it satisfies the designated requirement
 /// of the running copy, is notarized, and replaces the bundle in place at the same path.
-/// Anything else (a development build, a moved or translocated copy, the App Store edition)
+/// Anything else (a development build, a moved or translocated copy)
 /// leaves the installed application untouched.
 @MainActor final class Updater: ObservableObject {
     struct Release: Equatable {
@@ -42,7 +42,7 @@ import os
 
     init(bundle: Bundle = .main) {
         automatic = UserDefaults.standard.object(forKey: "automaticUpdates") as? Bool ?? true
-        repository = Self.repository(info: bundle.infoDictionary ?? [:], sandboxed: AccessibleEditor.blind)
+        repository = Self.repository(info: bundle.infoDictionary ?? [:])
         guard repository != nil else { return }
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
@@ -54,8 +54,8 @@ import os
 
     // MARK: Schedule
 
-    nonisolated static func repository(info: [String: Any], sandboxed: Bool) -> String? {
-        guard !sandboxed, let value = info["YasnoUpdateRepository"] as? String else { return nil }
+    nonisolated static func repository(info: [String: Any]) -> String? {
+        guard let value = info["YasnoUpdateRepository"] as? String else { return nil }
         let parts = value.split(separator: "/")
         return parts.count == 2 && parts.allSatisfy({ !$0.isEmpty }) ? value : nil
     }

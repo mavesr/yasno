@@ -533,7 +533,7 @@ final class AppModel: ObservableObject {
                                      editor: AccessibleEditor, whileTyping: Bool) {
         guard let suggestion = detector.correction(request, context: ""),
               let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source,
-                                            blind: AccessibleEditor.blind || editor.showsRemoteScreen),
+                                            blind: editor.showsRemoteScreen),
               monitor.revision == token.revision, !IsSecureEventInputEnabled(),
               monitor.commitGate(revision: token.revision) else { return }
         let typed = editor.showsRemoteScreen ? typeOnRemoteScreen(edit, in: suggestion.target) : KeyboardMonitor.typeKeystrokes(edit)
@@ -570,7 +570,7 @@ final class AppModel: ObservableObject {
 
     /// An automatic correction made blind, or nil where erasing by count is unsafe. The field
     /// may already hold the application's own spelling fix, so only layout changes are made.
-    /// The App Store build cannot see the field at all: a lone letter there is as likely a
+    /// Over Screen Sharing the field cannot be seen at all: a lone letter there is as likely a
     /// shortcut on a canvas or a shell command as a word, and only Shift converts it.
     static func keystrokeEdit(for token: KeyboardMonitor.Token, suggestion: Suggestion, source: KeyboardLayout,
                               blind: Bool) -> KeystrokeEdit? {

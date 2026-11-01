@@ -36,10 +36,9 @@ final class UpdaterTests: XCTestCase {
     }
 
     func testRepositoryComesOnlyFromTheWebsiteEdition() {
-        XCTAssertEqual(Updater.repository(info: ["YasnoUpdateRepository": "mavesr/yasno"], sandboxed: false), "mavesr/yasno")
-        XCTAssertNil(Updater.repository(info: ["YasnoUpdateRepository": "mavesr/yasno"], sandboxed: true))
-        XCTAssertNil(Updater.repository(info: [:], sandboxed: false))
-        XCTAssertNil(Updater.repository(info: ["YasnoUpdateRepository": "mavesr"], sandboxed: false))
+        XCTAssertEqual(Updater.repository(info: ["YasnoUpdateRepository": "mavesr/yasno"]), "mavesr/yasno")
+        XCTAssertNil(Updater.repository(info: [:]))
+        XCTAssertNil(Updater.repository(info: ["YasnoUpdateRepository": "mavesr"]))
     }
 
     private func release(_ tag: String, assets: [String], draft: Bool = false, prerelease: Bool = false) -> Data {

@@ -82,6 +82,8 @@ fn cycle_order_and_reconversion() {
 fn ukrainian_letters_on_windows_positions() {
     let (abc, uk, uke) = (layouts::us(), layouts::ukrainian(), layouts::ukrainian_enhanced());
     assert_eq!(abc.convert("s]'", &uk).unwrap(), "іїє");
-    assert_eq!(uke.character(0x2B, false, false), Some("ґ"));
+    assert_eq!(uke.character(0x56, false, false), Some("ґ"));
+    assert_eq!(uk.character(0x56, false, false), Some("ґ"));
+    assert_eq!(uk.character(0x29, false, false), Some("ё"));
     assert_eq!(uk.apostrophe_glyph(), "'");
 }

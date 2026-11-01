@@ -37,6 +37,9 @@ let bundleID = arguments[0], marker = arguments[1], focusSpec = arguments[2]
 let selected = arguments.count > 3 ? Array(arguments[3...]) : order
 guard selected.allSatisfy({ cases[$0] != nil }) else { fail("Unknown case") }
 guard CGPreflightPostEventAccess() else { fail("No permission to post keyboard events") }
+// Keys posted at a locked screen would go to the password field.
+let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+guard (session["CGSSessionScreenIsLocked"] as? Int ?? 0) == 0 else { fail("The screen is locked") }
 
 // A just-launched application can be listed with pid -1 until the workspace catches up.
 func running() -> NSRunningApplication? {

@@ -218,6 +218,7 @@ final class AppModel: ObservableObject {
         guard id != lastSource else { if id == automaticSource { automaticSource = nil }; return }
         let programmatic = id == automaticSource
         lastSource = id; automaticSource = nil
+        Trace.switching.info("input source changed programmatic=\(programmatic) sinceActivation=\(Trace.milliseconds(since: self.lastActivation)) ms pendingKeys=\(self.monitor.pendingCount)")
         monitor.syncSource(id)
         guard !programmatic,
               let layout = layouts.first(where: { $0.id == id }),

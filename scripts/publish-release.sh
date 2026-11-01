@@ -1,15 +1,15 @@
 #!/bin/zsh
 # Publishes the notarized build made by package-dmg.sh as a GitHub release.
 # Running copies of Ясно check the latest release daily at 21:00 and install its
-# Yasno-<version>-universal.zip in place. Requires the GitHub CLI (gh auth login).
+# Yasno-<version>-arm64.zip in place. Requires the GitHub CLI (gh auth login).
 # Optional: YASNO_RELEASE_REPO (default mavesr/yasno), YASNO_RELEASE_NOTES (text).
 set -euo pipefail
 cd "${0:A:h:h}"
 
 YASNO_REPO="${YASNO_RELEASE_REPO:-mavesr/yasno}"
 YASNO_VERSION="${1:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/Ясно.app/Contents/Info.plist)}"
-YASNO_ZIP="dist/Yasno-$YASNO_VERSION-universal.zip"
-YASNO_DMG="dist/Yasno-$YASNO_VERSION-universal-notarized.dmg"
+YASNO_ZIP="dist/Yasno-$YASNO_VERSION-arm64.zip"
+YASNO_DMG="dist/Yasno-$YASNO_VERSION-arm64-notarized.dmg"
 for file in "$YASNO_ZIP" "$YASNO_DMG"; do
     if [[ ! -f "$file" ]]; then
         print -u2 "Missing $file. Run: YASNO_NOTARY_PROFILE=yasno-distribution ./scripts/package-dmg.sh"

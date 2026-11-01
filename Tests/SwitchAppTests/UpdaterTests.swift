@@ -48,20 +48,20 @@ final class UpdaterTests: XCTestCase {
     }
 
     func testParsePicksTheApplicationArchive() throws {
-        let parsed = try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-universal-notarized.dmg", "Yasno-0.2.21-universal.zip"]))
+        let parsed = try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-arm64-notarized.dmg", "Yasno-0.2.21-arm64.zip"]))
         XCTAssertEqual(parsed?.version, "0.2.21")
-        XCTAssertEqual(parsed?.archive.lastPathComponent, "Yasno-0.2.21-universal.zip")
+        XCTAssertEqual(parsed?.archive.lastPathComponent, "Yasno-0.2.21-arm64.zip")
     }
 
     func testParseSkipsDraftsAndPrereleases() throws {
-        XCTAssertNil(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-universal.zip"], prerelease: true)))
-        XCTAssertNil(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-universal.zip"], draft: true)))
+        XCTAssertNil(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-arm64.zip"], prerelease: true)))
+        XCTAssertNil(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-arm64.zip"], draft: true)))
     }
 
     func testParseRejectsAReleaseWithoutTheMatchingArchive() {
-        XCTAssertThrowsError(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-universal-notarized.dmg"])))
-        XCTAssertThrowsError(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.20-universal.zip"])))
-        XCTAssertThrowsError(try Updater.parse(release("latest", assets: ["Yasno-latest-universal.zip"])))
+        XCTAssertThrowsError(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.21-arm64-notarized.dmg"])))
+        XCTAssertThrowsError(try Updater.parse(release("v0.2.21", assets: ["Yasno-0.2.20-arm64.zip"])))
+        XCTAssertThrowsError(try Updater.parse(release("latest", assets: ["Yasno-latest-arm64.zip"])))
     }
 
     func testOnlyDeveloperIDRequirementsAreAccepted() {

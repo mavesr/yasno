@@ -1,5 +1,5 @@
 Ясно — переключатель раскладки для macOS 14 и новее
-Подходит для Mac с Apple Silicon и Intel.
+Подходит для Mac с Apple Silicon.
 
 УСТАНОВКА
 

@@ -29,6 +29,6 @@ arrow.lineCapStyle = .round
 arrow.lineJoinStyle = .round
 green.withAlphaComponent(0.6).setStroke()
 arrow.stroke()
-centered("macOS 14+  ·  Apple Silicon и Intel", y: 40, size: 12, color: .gray)
+centered("macOS 14+  ·  Apple Silicon", y: 40, size: 12, color: .gray)
 NSGraphicsContext.restoreGraphicsState()
 try bitmap.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: CommandLine.arguments[1]))

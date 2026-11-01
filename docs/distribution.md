@@ -1,6 +1,6 @@
 # Сборка DMG
 
-Установщик содержит универсальное приложение для Apple Silicon и Intel,
+Установщик содержит приложение для Apple Silicon,
 ссылку на `/Applications` и инструкцию по первому запуску. Минимальная macOS — 14.0.
 Сборка для распространения не заменяет `~/Applications/Ясно.app` и локальную
 сборку `dist/Ясно.app`.
@@ -15,7 +15,7 @@
 YASNO_NOTARY_PROFILE=yasno-distribution ./scripts/package-dmg.sh
 ```
 
-Скрипт собирает arm64 и x86_64, объединяет их через `lipo`, подписывает приложение
+Скрипт собирает приложение для arm64, подписывает его
 с Hardened Runtime и временной меткой Apple, отправляет его на нотарификацию,
 прикрепляет билет к приложению, создаёт и подписывает DMG, затем отдельно
 нотарифицирует DMG и прикрепляет его билет. Только после успешных проверок
@@ -52,16 +52,15 @@ Mac; локальное завершение сборки ожидает про�
 ## Проверка
 
 ```sh
-hdiutil verify dist/Yasno-0.1.6-universal-notarized.dmg
-xcrun stapler validate dist/Yasno-0.1.6-universal-notarized.dmg
+hdiutil verify dist/Yasno-0.1.6-arm64-notarized.dmg
+xcrun stapler validate dist/Yasno-0.1.6-arm64-notarized.dmg
 spctl --assess --type open --context context:primary-signature --verbose=2 \
-    dist/Yasno-0.1.6-universal-notarized.dmg
+    dist/Yasno-0.1.6-arm64-notarized.dmg
 ```
 
 После монтирования также проверяются подпись и билет вложенного приложения.
 Диагностика `Contents/MacOS/Yasno --diagnose` позволяет проверить загрузку
-словарей без запуска второго перехватчика клавиатуры. На этом Mac Intel-срез
-дополнительно проверяется через Rosetta (`arch -x86_64 ... --diagnose`).
+словарей без запуска второго перехватчика клавиатуры.
 
 ## Автообновление
 
@@ -73,7 +72,7 @@ spctl --assess --type open --context context:primary-signature --verbose=2 \
 
 Новая версия устанавливается без вопросов, только если:
 
-- архив `Yasno-<версия>-universal.zip` из выпуска `v<версия>` (не черновик и не
+- архив `Yasno-<версия>-arm64.zip` из выпуска `v<версия>` (не черновик и не
   предварительный) содержит ровно одно приложение с той же версией;
 - приложение удовлетворяет designated requirement запущенной копии: тот же
   идентификатор `local.yasno.switcher` и тот же сертификат Developer ID команды
@@ -95,7 +94,7 @@ YASNO_NOTARY_PROFILE=yasno-distribution ./scripts/package-dmg.sh
 ```
 
 `package-dmg.sh` после прикрепления билета Apple кладёт в `dist` архив
-`Yasno-<версия>-universal.zip`. `publish-release.sh` проверяет его так же, как
+`Yasno-<версия>-arm64.zip`. `publish-release.sh` проверяет его так же, как
 программа (Developer ID, нотарификация, версия, репозиторий обновлений), и через
 `gh release create` публикует выпуск `v<версия>` с архивом и DMG. Версию в
 `scripts/build.sh` нужно повышать перед каждым выпуском, иначе обновление не

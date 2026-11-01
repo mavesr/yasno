@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Mac App Store build: universal, App Sandbox, signed for distribution and packaged as .pkg.
+# Mac App Store build: arm64 (Apple Silicon), App Sandbox, signed for distribution and packaged as .pkg.
 # Inside the sandbox AX requests to other applications fail, so this build corrects every
 # field with keystrokes only (see AccessibleEditor.blind). The DMG keeps the full behaviour.
 #
@@ -34,11 +34,6 @@ mkdir -p "$YASNO_WORK/stage" dist
 YASNO_APP="$YASNO_WORK/stage/Ясно.app"
 YASNO_APP_PATH="$YASNO_APP" YASNO_SIGNING_IDENTITY=- YASNO_SKIP_DIAGNOSE=1 \
     ./scripts/build.sh --scratch-path .build/distribution-arm64 --triple arm64-apple-macosx14.0
-swift build -c release --scratch-path .build/distribution-x86_64 --triple x86_64-apple-macosx14.0 --product Yasno
-YASNO_INTEL_DIR="$(swift build -c release --scratch-path .build/distribution-x86_64 \
-    --triple x86_64-apple-macosx14.0 --show-bin-path)"
-lipo -create "$YASNO_APP/Contents/MacOS/Yasno" "$YASNO_INTEL_DIR/Yasno" -output "$YASNO_WORK/Yasno-universal"
-mv "$YASNO_WORK/Yasno-universal" "$YASNO_APP/Contents/MacOS/Yasno"
 chmod 755 "$YASNO_APP/Contents/MacOS/Yasno"
 rm -rf "$YASNO_APP/Contents/Resources/AppIcon.iconset"
 
@@ -75,7 +70,6 @@ codesign --force --sign "$YASNO_APP_IDENTITY" --options runtime --timestamp \
     --entitlements "$YASNO_WORK/entitlements.plist" --identifier "$YASNO_BUNDLE_ID" "$YASNO_APP"
 codesign --verify --deep --strict --verbose=2 "$YASNO_APP"
 lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch arm64
-lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch x86_64
 
 YASNO_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_PLIST")"
 YASNO_PKG="$PWD/dist/Yasno-$YASNO_VERSION-appstore.pkg"

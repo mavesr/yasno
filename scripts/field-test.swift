@@ -48,6 +48,11 @@ let cases: [String: Case] = [
     "native-ru": Case(layout: "Russian", keys: "z nen ", expected: "я тут "),
     "native-en": Case(layout: "ABC", keys: "hello world ", expected: "hello world "),
     "fast-phrase": Case(layout: "ABC", keys: "ghbdtn rfr ltkf ", expected: "привет как дела ", gap: 0.012),
+    // A layout change in the middle of a word. The result is not deterministic: a programmatic
+    // TISSelectInputSource races macOS «switch to a document's input source», which restores the
+    // field's own layout, so some of the keys after the switch land on the restored layout. The
+    // point is only that Ясно forgets the word on the change and corrupts nothing; run it on its
+    // own with @switch and read the log, do not assert the field's text.
     "switch-mid-word": Case(layout: "ABC", keys: "ghb⌨dtn ", expected: "ghbвет "),
     "tab": Case(layout: "ABC", keys: "ghbdtn⇥vbh ", expected: "привет\tмир "),
     "mid-line": Case(layout: "ABC", keys: "aaa bbb←←←ghbdtn ", expected: "aaa привет bbb"),
@@ -55,8 +60,9 @@ let cases: [String: Case] = [
 ]
 let basic = ["abc-to-ru", "abc-to-uk", "ru-to-en", "address", "symbol-prefix", "long-word", "capital", "caps",
              "punctuation", "code", "backspace", "slow", "pause", "undo", "manual", "native-ru", "native-en",
-             "fast-phrase", "switch-mid-word"]
-let sets: [String: [String]] = ["@basic": basic, "@text": basic + ["tab", "mid-line"], "@secure": ["secure"]]
+             "fast-phrase"]
+let sets: [String: [String]] = ["@basic": basic, "@text": basic + ["tab", "mid-line"], "@secure": ["secure"],
+                                "@switch": ["switch-mid-word"]]
 
 let arguments = Array(CommandLine.arguments.dropFirst())
 guard arguments.count >= 3 else { fail("usage: field-test <bundle id> <title marker> <focus> [case… | @set…]") }

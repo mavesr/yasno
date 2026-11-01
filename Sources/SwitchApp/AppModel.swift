@@ -51,6 +51,7 @@ final class AppModel: ObservableObject {
     private var focusObserver: AXObserver?
     private var observedPID: pid_t = 0
     private var activePID: pid_t = 0
+    private var lastActivation: TimeInterval = 0
     private var focusedElement: AXUIElement?
     private var ignored: Set<String> = []
     private var keyboardType: UInt32 = 0
@@ -122,12 +123,17 @@ final class AppModel: ObservableObject {
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+            let started = ProcessInfo.processInfo.systemUptime
             let pid = AccessibleEditor.typingApplication()?.processIdentifier ?? 0
+            let lookup = Trace.milliseconds(since: started)
+            let previous = self.activePID
             if pid != self.activePID {
                 self.activePID = pid; self.monitor.syncApplication(pid)
                 SystemLexicon.shared.forget()
             }
             self.refresh()
+            self.lastActivation = started
+            Trace.switching.info("activated pid=\(pid) previous=\(previous) lookup=\(lookup) ms handled=\(Trace.milliseconds(since: started)) ms")
         }
         // Caramba is tracked by launch/termination notifications instead of enumerating
         // all running applications on every refresh.
@@ -201,7 +207,10 @@ final class AppModel: ObservableObject {
 
     @discardableResult private func selectLayout(_ target: KeyboardLayout) -> Bool {
         automaticSource = target.id
-        guard target.select(), KeyboardLayout.currentID() == target.id else { automaticSource = nil; return false }
+        guard target.select(), KeyboardLayout.currentID() == target.id else {
+            Trace.switching.info("layout selection failed or was reverted by the system")
+            automaticSource = nil; return false
+        }
         lastSource = target.id
         monitor.syncSource(target.id)
         return true
@@ -209,9 +218,13 @@ final class AppModel: ObservableObject {
 
     func sourceChanged() {
         let id = KeyboardLayout.currentID()
-        guard id != lastSource else { if id == automaticSource { automaticSource = nil }; return }
+        guard id != lastSource else {
+            Trace.switching.debug("input source notification without a change")
+            if id == automaticSource { automaticSource = nil }; return
+        }
         let programmatic = id == automaticSource
         lastSource = id; automaticSource = nil
+        Trace.switching.info("input source changed programmatic=\(programmatic) sinceActivation=\(Trace.milliseconds(since: self.lastActivation)) ms pendingKeys=\(self.monitor.pendingCount)")
         monitor.syncSource(id)
         guard !programmatic,
               let layout = layouts.first(where: { $0.id == id }),
@@ -250,7 +263,11 @@ final class AppModel: ObservableObject {
         else if !monitor.start() { nextStatus = "Не удалось подключить клавиатуру" }
         else { nextStatus = "Готово к работе" }
         update(\.status, nextStatus)
+        let wasMonitoring = monitor.enabled
         monitor.enabled = enabled && !carambaRunning && accessibility && inputMonitoring && !secureInput && !excluded && layouts.count >= 2 && !monitor.faulted
+        if monitor.enabled != wasMonitoring {
+            Trace.switching.info("monitor enabled=\(self.monitor.enabled) status=\(nextStatus, privacy: .public) pid=\(self.activePID)")
+        }
         if lastSource.isEmpty { lastSource = KeyboardLayout.currentID() }
         let state = MenuState(status: status, enabled: enabled, monitoring: monitor.enabled, layouts: layoutNames)
         if state != lastMenuState { lastMenuState = state; onStateChange?() }
@@ -296,17 +313,25 @@ final class AppModel: ObservableObject {
         let callback: AXObserverCallback = { _, element, notification, context in
             guard let context else { return }
             let model = Unmanaged<AppModel>.fromOpaque(context).takeUnretainedValue()
+            let sameElement: Bool
             if CFEqual(notification, kAXFocusedUIElementChangedNotification as CFString) {
                 if let previous = model.focusedElement, CFEqual(element, previous) { return }
+                sameElement = false
                 model.focusedElement = element
-            } else { model.focusedElement = nil }
-            model.monitor.reset()
+            } else { sameElement = true; model.focusedElement = nil }
+            // Not a reset: an application announces its focus 60–300 ms after coming to the
+            // front, and the first letters of a word typed meanwhile used to be lost with it.
+            let pending = model.monitor.pendingCount
+            model.monitor.focusChanged()
+            Trace.switching.info("focus notification \(notification as String, privacy: .public) windowOnly=\(sameElement) sinceActivation=\(Trace.milliseconds(since: model.lastActivation)) ms keysKept=\(pending)")
         }
         guard AXObserverCreate(pid, callback, &observer) == .success, let observer else { return }
         let app = AXUIElementCreateApplication(pid)
         let context = Unmanaged.passUnretained(self).toOpaque()
+        let started = ProcessInfo.processInfo.systemUptime
         AXObserverAddNotification(observer, app, kAXFocusedUIElementChangedNotification as CFString, context)
         AXObserverAddNotification(observer, app, kAXFocusedWindowChangedNotification as CFString, context)
+        Trace.switching.info("focus observer pid=\(pid) registered in \(Trace.milliseconds(since: started)) ms")
         CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .commonModes)
         focusObserver = observer
     }
@@ -323,6 +348,9 @@ final class AppModel: ObservableObject {
             return
         }
         receipt = nil
+        if token.text.count == 1 {
+            Trace.switching.info("word started pid=\(token.pid) sinceActivation=\(Trace.milliseconds(since: self.lastActivation)) ms")
+        }
         pendingTypingToken = token
         pauseTask?.cancel(); pauseTask = nil
         // A short word is checked only by Space, which a search field never gets (Countries:
@@ -415,12 +443,22 @@ final class AppModel: ObservableObject {
             // Live ticks were checked with mayCorrect before the gate.
             guard whileTyping || self.detector.mayCorrect(request) else { return }
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
+            let lookupStart = ProcessInfo.processInfo.systemUptime
             guard self.monitor.revision == token.revision,
-                  let editor = AccessibleEditor.focused(pid: token.pid) else { return }
+                  let editor = AccessibleEditor.focused(pid: token.pid) else {
+                Trace.correction.info("no focused field pid=\(token.pid) live=\(whileTyping) after \(Trace.milliseconds(since: lookupStart)) ms")
+                return
+            }
+            let lookup = Trace.milliseconds(since: lookupStart)
+            let canvasStart = ProcessInfo.processInfo.systemUptime
             if editor.isCanvasTypingTarget {
+                Trace.correction.info("canvas field pid=\(token.pid) live=\(whileTyping) focusMoved=\(token.focusMoved) lookup=\(lookup) ms canvas=\(Trace.milliseconds(since: canvasStart)) ms")
+                // Nothing can be read back here, and the focus moved while the word was typed.
+                guard !token.focusMoved else { return }
                 self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
                 return
             }
+            let canvas = Trace.milliseconds(since: canvasStart)
             // Asked at most once per attempt, here on the worker, and only once an edit is near:
             // the same answer then serves the edit and its handling on main.
             var knownReceiver: pid_t?
@@ -432,6 +470,7 @@ final class AppModel: ObservableObject {
             // The panel's layout cannot be switched, so the rest of a word corrected while it is
             // typed would stay in the old layout. Correct it only once typing has stopped.
             if whileTyping, !settled, inPanel() {
+                Trace.correction.info("live correction deferred pid=\(token.pid): keys go to a panel")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     guard self.monitor.revision == token.revision else { return }
                     self.correct(token, whileTyping: true, settled: true, paused: paused)
@@ -439,22 +478,31 @@ final class AppModel: ObservableObject {
                 return
             }
             if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
-               ProcessInfo.processInfo.systemUptime < blocked.until { return }
+               ProcessInfo.processInfo.systemUptime < blocked.until {
+                Trace.correction.info("live correction skipped pid=\(token.pid): field blocked for \(Int(blocked.until - ProcessInfo.processInfo.systemUptime)) s more")
+                return
+            }
             let suffix = token.text + token.suffix
             // Key delivery and AX updates are asynchronous. Confirm the exact suffix
             // while later physical input is held, including a word with no trailing space.
+            let caretStart = ProcessInfo.processInfo.systemUptime
             guard let caret = editor.waitForCaret(after: token, deadline: deadline,
                 stillValid: { self.monitor.revision == token.revision }) else {
-                guard self.monitor.revision == token.revision else { return }
+                let stale = self.monitor.revision != token.revision
+                Trace.correction.info("no caret pid=\(token.pid) live=\(whileTyping) stale=\(stale) lookup=\(lookup) ms canvas=\(canvas) ms wait=\(Trace.milliseconds(since: caretStart)) ms")
+                // The focus moved while the word was typed: the field may simply not hold it.
+                guard !stale, !token.focusMoved else { return }
                 // Another editor drawn on a canvas: the field still shows nothing typed.
                 if editor.exposesNoText {
                     self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
                 } else if whileTyping {
                     // Only a genuine timeout counts; newer input invalidating the wait does not.
                     self.liveBlocked = (editor.element, ProcessInfo.processInfo.systemUptime + 30)
+                    Trace.correction.info("live corrections blocked for 30 s pid=\(token.pid)")
                 }
                 return
             }
+            Trace.correction.info("caret found pid=\(token.pid) live=\(whileTyping) lookup=\(lookup) ms canvas=\(canvas) ms wait=\(Trace.milliseconds(since: caretStart)) ms")
             let suffixRange = CFRange(location: caret.location - suffix.utf16.count, length: suffix.utf16.count)
             let contextCount = min(suffixRange.location, 256)
             let context = contextCount > 0
@@ -471,6 +519,7 @@ final class AppModel: ObservableObject {
                                         caret: caret, stillValid: { self.monitor.revision == token.revision && !IsSecureEventInputEnabled() },
                                         commit: { self.monitor.commitGate(revision: token.revision) }, deadline: deadline, receiver: receiver())
             let panel = inPanel()
+            Trace.correction.info("edit pid=\(token.pid) live=\(whileTyping) result=\(String(describing: result), privacy: .public) total=\(Trace.milliseconds(since: lookupStart)) ms")
             DispatchQueue.main.async {
                 self.handle(result, editor: editor, range: range, caret: caret, original: token.text,
                             replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target, live: whileTyping, panel: panel)
@@ -525,7 +574,8 @@ final class AppModel: ObservableObject {
     /// shortcut on a canvas or a shell command as a word, and only Shift converts it.
     static func keystrokeEdit(for token: KeyboardMonitor.Token, suggestion: Suggestion, source: KeyboardLayout,
                               blind: Bool) -> KeystrokeEdit? {
-        guard suggestion.target.id != source.id, !(blind && token.text.count == 1) else { return nil }
+        // Erasing by count needs every key of the word in this field: not after a focus change.
+        guard !token.focusMoved, suggestion.target.id != source.id, !(blind && token.text.count == 1) else { return nil }
         return KeystrokeEdit(typed: token.text, replacement: suggestion.replacement, suffix: token.suffix)
     }
 
@@ -681,6 +731,8 @@ final class AppModel: ObservableObject {
             }
             // A keystroke edit is undone with keystrokes too: such a field has nothing to read back.
             if editor.isCanvasTypingTarget || (receipt?.keystrokes != nil && receipt.map { CFEqual($0.editor.element, editor.element) } == true) {
+                // Some keys of the word may have gone to another field: nothing to erase by count.
+                guard expectedToken?.focusMoved != true else { return }
                 if !self.manualByKeystrokes(editor: editor, expectedToken: expectedToken, receipt: receipt, revision: revision,
                                             sourceID: sourceID, layouts: layouts, preferredID: preferredID, bundleID: app.bundleIdentifier) {
                     switchOnly()

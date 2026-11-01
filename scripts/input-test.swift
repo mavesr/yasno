@@ -39,6 +39,9 @@ let expectedText = ["expect-mixed": "привет how are you як ти себе
     "expect-punctuation": "ghbdtn, vbh", "expect-appstore": "appstore ", "expect-raw-appstore": "фззыещку "]
 guard ["inspect", "clear", "stress-compounds", "stress-mixed", "stress-native", "stress-overlap", "stress-correction-overlap", "stress-manual-space", "expect-selection", "switch-layout", "double-shift", "select-abc", "select-ru", "select-uk", "expect-abc", "expect-ru", "expect-uk"].contains(argument) || asciiFixtures[argument] != nil || expectedText[argument] != nil || gestureTests.contains(argument) || samples[argument] != nil else { fail("Unknown test") }
 guard CGPreflightPostEventAccess() else { fail("The test driver has no permission to post keyboard events") }
+// Keys posted at a locked screen would go to the password field.
+let session = CGSessionCopyCurrentDictionary() as? [String: Any] ?? [:]
+guard (session["CGSSessionScreenIsLocked"] as? Int ?? 0) == 0 else { fail("The screen is locked") }
 if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != "com.google.Chrome" {
     guard let chrome = NSRunningApplication.runningApplications(withBundleIdentifier: "com.google.Chrome").first else { fail("Chrome is not running") }
     chrome.activate(options: [.activateAllWindows])

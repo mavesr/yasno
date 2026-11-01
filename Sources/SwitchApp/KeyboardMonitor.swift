@@ -12,6 +12,10 @@ final class KeyboardMonitor {
         let revision: UInt64
         var liveConverted = false
         var physicalKeys: [KeyboardLayout.KeyStroke]? = nil
+        /// The application reported a focus change while this word was typed, so some of its
+        /// keys may have gone to another field. An exact replacement verifies the text at the
+        /// caret first; an edit that erases by count cannot and must not use this word.
+        var focusMoved = false
     }
     var onToken: ((Token) -> Void)?
     var onProgress: ((Token) -> Void)?
@@ -98,6 +102,7 @@ final class KeyboardMonitor {
     private let postEvent: (CGEvent) -> Void
     private let currentSourceID: () -> String
     private let currentPID: () -> pid_t
+    private var focusMovedDuringWord = false // Main only; see Token.focusMoved.
     private let secureInputEnabled: () -> Bool
 
     init(postEvent: @escaping (CGEvent) -> Void = { $0.post(tap: .cgSessionEventTap) },
@@ -156,8 +161,28 @@ final class KeyboardMonitor {
     func syncApplication(_ newPID: pid_t) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard pid != newPID else { return }
+        if !token.isEmpty { Trace.switching.info("application changed mid-word: \(self.token.count) keys dropped, pid \(self.pid) → \(newPID)") }
         reset()
         pid = newPID
+    }
+
+    /// Keys of the word being typed, for diagnostics. Main only.
+    var pendingCount: Int {
+        dispatchPrecondition(condition: .onQueue(.main))
+        return token.count
+    }
+
+    /// The application announced its focused element or window. After coming to the front an
+    /// application does so 60–300 ms after the activation notification, often once the user has
+    /// started typing: those keys went to the field that has the focus now. The word is kept and
+    /// marked (see Token.focusMoved); a word already finished is no longer at the caret, and
+    /// work in flight for the old focus is invalidated.
+    func focusChanged() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        lock.lock(); generation &+= 1; lock.unlock()
+        completedToken = nil
+        if !token.isEmpty { focusMovedDuringWord = true }
+        onCancelAnalysis?()
     }
 
     /// Pass the revision given to beginGate. A gate already released by the watchdog
@@ -272,6 +297,7 @@ final class KeyboardMonitor {
         if permanent { hasFaulted = true }
         let layout = replayLayout, halted = stopped
         lock.unlock()
+        Trace.switching.info("replay failed: \(remaining.count) captured events released, permanent=\(permanent)")
         if permanent { enabled = false } else { reset() }
         // A failed replay must never leave the keyboard or mouse captured indefinitely.
         for event in remaining { prepare(event, tag: Self.editTag, layout: layout); postEvent(event) }
@@ -390,10 +416,13 @@ final class KeyboardMonitor {
         if unused { drainNext() }
     }
 
-    func reset() {
+    /// `reason` defaults to the caller's name, for the diagnostic log.
+    func reset(reason: String = #function) {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock(); generation &+= 1; lock.unlock()
+        if !token.isEmpty { Trace.switching.info("word of \(self.token.count) letters dropped by \(reason, privacy: .public)") }
         token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; composing = false; shiftGesture.reset()
+        focusMovedDuringWord = false
         onCancelAnalysis?()
     }
 
@@ -404,11 +433,13 @@ final class KeyboardMonitor {
         self.sourceID = sourceID; self.pid = pid
         token = text; completedToken = nil; liveConverted = true
         physicalKeys = nil
+        focusMovedDuringWord = false // The replacement verified the field the word is in.
+        Trace.switching.debug("word of \(text.count) letters resumed after a live correction")
     }
 
     private func snapshot(suffix: String = "", revision: UInt64) -> Token {
         Token(text: token, suffix: suffix, sourceID: sourceID, pid: pid,
-              revision: revision, liveConverted: liveConverted, physicalKeys: physicalKeys)
+              revision: revision, liveConverted: liveConverted, physicalKeys: physicalKeys, focusMoved: focusMovedDuringWord)
     }
 
     /// Invoked on the dedicated tap thread; observation and app state stay on main.
@@ -634,6 +665,7 @@ final class KeyboardMonitor {
         if token.isEmpty {
             liveConverted = false
             physicalKeys = []
+            focusMovedDuringWord = false
             syncSource(currentSourceID())
             syncApplication(currentPID())
         }
@@ -641,14 +673,19 @@ final class KeyboardMonitor {
         let clean = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
         let previous = completedToken
         if key != 49 && !(key == 51 && clean) { completedToken = nil }
-        guard clean, pid > 0 else { token = ""; physicalKeys = []; onCancelAnalysis?(); return }
+        guard clean, pid > 0 else {
+            if clean { Trace.switching.info("key without an application: \(self.token.count) keys dropped") }
+            token = ""; physicalKeys = []; onCancelAnalysis?(); return
+        }
         let currentID = sourceID
         if key == 51 {
             if !token.isEmpty {
                 token.removeLast()
                 if physicalKeys?.isEmpty == false { physicalKeys?.removeLast() }
+                Trace.switching.debug("backspace: word now \(self.token.count) letters")
                 onProgress?(snapshot(revision: revision))
             } else if let previous {
+                Trace.switching.info("backspace after a finished word of \(previous.text.count) letters, suffix \(previous.suffix.count)")
                 // Erasing the Space after a word continues that word. A correction resets
                 // the monitor, so completedToken still matches the field here.
                 if previous.suffix.count > 1 {
@@ -691,17 +728,25 @@ final class KeyboardMonitor {
         guard let layout = layouts.first(where: { $0.id == currentID }),
               let string = layout.character(key: UInt16(key), shift: flags.contains(.maskShift),
                                             capsLock: flags.contains(.maskAlphaShift))
-        else { token = ""; return }
+        else {
+            Trace.switching.info("key without a character in the current layout: word of \(self.token.count) letters dropped")
+            token = ""; return
+        }
         // The application composes a dead key with the next one (c a f ' e is café on US
         // International). Counting keys would then erase a character before the word: leave it.
         if composing || layout.isDeadKey(key: UInt16(key), shift: flags.contains(.maskShift),
                                          capsLock: flags.contains(.maskAlphaShift)) {
+            Trace.switching.info("dead key: word of \(self.token.count) letters dropped")
             composing = true; token = ""; physicalKeys = []; onCancelAnalysis?(); return
         }
         guard !string.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              token.count + string.count <= 512 else { token = ""; return }
+              token.count + string.count <= 512 else {
+            Trace.switching.info("control character or overlong word: word of \(self.token.count) letters dropped")
+            token = ""; return
+        }
         token += string
         physicalKeys?.append(.init(key: UInt16(key), shift: flags.contains(.maskShift), capsLock: flags.contains(.maskAlphaShift)))
+        Trace.switching.debug("key: word \(self.token.count) letters")
         onProgress?(snapshot(revision: revision))
     }
 

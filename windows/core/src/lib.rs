@@ -16,6 +16,7 @@ pub mod policy;
 pub mod shift_tap;
 pub mod spelling;
 pub mod text_safety;
+pub mod typing;
 pub mod web_address;
 pub mod word_boundary;
 pub mod word_text;

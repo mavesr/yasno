@@ -133,3 +133,17 @@ fn backspace_edits_the_word() {
     f.keys(&us, "ghbx\u{8}dtn ");
     assert_eq!(f.text, "привет ");
 }
+
+#[test]
+fn short_word_converts_after_a_pause() {
+    let d = Detector::default();
+    let (us, ru, uk) = (layouts::us(), layouts::russian(), layouts::ukrainian());
+    let mut f = Field::new(&d, vec![&us, &ru, &uk]);
+    f.layout = &ru;
+    f.keys(&us, "usa");
+    assert_eq!(f.text, "гыф");
+    let check = f.t.pause_check().unwrap();
+    f.decide(check);
+    assert_eq!(f.text, "usa");
+    assert_eq!(f.layout.id, us.id);
+}

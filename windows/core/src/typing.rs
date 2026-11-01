@@ -37,6 +37,8 @@ pub struct Check {
     pub context: String,
     pub while_typing: bool,
     pub live_converted: bool,
+    /// Typing stopped on a two- or three-letter word (search fields get no Space).
+    pub paused: bool,
 }
 
 impl Check {
@@ -44,7 +46,7 @@ impl Check {
                        correct_spelling: bool) -> Option<CorrectionRequest<'a>> {
         let source = *layouts.iter().find(|l| l.id == self.layout_id)?;
         Some(CorrectionRequest::new(&self.text, source, layouts, ignored, preferred, correct_spelling,
-                                    self.while_typing, self.live_converted, false))
+                                    self.while_typing, self.live_converted, self.paused))
     }
 }
 
@@ -110,7 +112,13 @@ impl Typing {
 
     fn check(&self, while_typing: bool) -> Check {
         Check { version: self.version, text: self.text.clone(), layout_id: self.layout_id.clone(),
-                context: self.context.clone(), while_typing, live_converted: self.live_converted }
+                context: self.context.clone(), while_typing, live_converted: self.live_converted, paused: false }
+    }
+
+    /// Called when typing stopped for 0.6 s: a short unfinished word is checked as complete.
+    pub fn pause_check(&self) -> Option<Check> {
+        if !self.suffix.is_empty() || self.live_converted || !(2..=3).contains(&count(&self.text)) { return None; }
+        Some(Check { paused: true, ..self.check(true) })
     }
 
     /// One key as the user pressed it, in the layout active at that moment.

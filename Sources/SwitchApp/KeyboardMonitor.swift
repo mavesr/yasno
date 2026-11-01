@@ -149,6 +149,7 @@ final class KeyboardMonitor {
     func syncSource(_ id: String) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard sourceID != id else { return }
+        if !token.isEmpty { Trace.switching.info("layout changed mid-word: \(self.token.count) keys dropped") }
         reset()
         sourceID = id
     }
@@ -156,8 +157,15 @@ final class KeyboardMonitor {
     func syncApplication(_ newPID: pid_t) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard pid != newPID else { return }
+        if !token.isEmpty { Trace.switching.info("application changed mid-word: \(self.token.count) keys dropped, pid \(self.pid) → \(newPID)") }
         reset()
         pid = newPID
+    }
+
+    /// Keys of the word being typed, for diagnostics. Main only.
+    var pendingCount: Int {
+        dispatchPrecondition(condition: .onQueue(.main))
+        return token.count
     }
 
     /// Pass the revision given to beginGate. A gate already released by the watchdog
@@ -641,7 +649,10 @@ final class KeyboardMonitor {
         let clean = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskSecondaryFn]).isEmpty
         let previous = completedToken
         if key != 49 && !(key == 51 && clean) { completedToken = nil }
-        guard clean, pid > 0 else { token = ""; physicalKeys = []; onCancelAnalysis?(); return }
+        guard clean, pid > 0 else {
+            if clean { Trace.switching.info("key without an application: \(self.token.count) keys dropped") }
+            token = ""; physicalKeys = []; onCancelAnalysis?(); return
+        }
         let currentID = sourceID
         if key == 51 {
             if !token.isEmpty {

@@ -207,7 +207,10 @@ final class AppModel: ObservableObject {
 
     @discardableResult private func selectLayout(_ target: KeyboardLayout) -> Bool {
         automaticSource = target.id
-        guard target.select(), KeyboardLayout.currentID() == target.id else { automaticSource = nil; return false }
+        guard target.select(), KeyboardLayout.currentID() == target.id else {
+            Trace.switching.info("layout selection failed or was reverted by the system")
+            automaticSource = nil; return false
+        }
         lastSource = target.id
         monitor.syncSource(target.id)
         return true
@@ -215,7 +218,10 @@ final class AppModel: ObservableObject {
 
     func sourceChanged() {
         let id = KeyboardLayout.currentID()
-        guard id != lastSource else { if id == automaticSource { automaticSource = nil }; return }
+        guard id != lastSource else {
+            Trace.switching.debug("input source notification without a change")
+            if id == automaticSource { automaticSource = nil }; return
+        }
         let programmatic = id == automaticSource
         lastSource = id; automaticSource = nil
         Trace.switching.info("input source changed programmatic=\(programmatic) sinceActivation=\(Trace.milliseconds(since: self.lastActivation)) ms pendingKeys=\(self.monitor.pendingCount)")
@@ -464,6 +470,7 @@ final class AppModel: ObservableObject {
             // The panel's layout cannot be switched, so the rest of a word corrected while it is
             // typed would stay in the old layout. Correct it only once typing has stopped.
             if whileTyping, !settled, inPanel() {
+                Trace.correction.info("live correction deferred pid=\(token.pid): keys go to a panel")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     guard self.monitor.revision == token.revision else { return }
                     self.correct(token, whileTyping: true, settled: true, paused: paused)

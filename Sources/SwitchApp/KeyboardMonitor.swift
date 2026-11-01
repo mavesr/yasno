@@ -297,6 +297,7 @@ final class KeyboardMonitor {
         if permanent { hasFaulted = true }
         let layout = replayLayout, halted = stopped
         lock.unlock()
+        Trace.switching.info("replay failed: \(remaining.count) captured events released, permanent=\(permanent)")
         if permanent { enabled = false } else { reset() }
         // A failed replay must never leave the keyboard or mouse captured indefinitely.
         for event in remaining { prepare(event, tag: Self.editTag, layout: layout); postEvent(event) }
@@ -415,9 +416,11 @@ final class KeyboardMonitor {
         if unused { drainNext() }
     }
 
-    func reset() {
+    /// `reason` defaults to the caller's name, for the diagnostic log.
+    func reset(reason: String = #function) {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock(); generation &+= 1; lock.unlock()
+        if !token.isEmpty { Trace.switching.info("word of \(self.token.count) letters dropped by \(reason, privacy: .public)") }
         token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; composing = false; shiftGesture.reset()
         focusMovedDuringWord = false
         onCancelAnalysis?()
@@ -431,6 +434,7 @@ final class KeyboardMonitor {
         token = text; completedToken = nil; liveConverted = true
         physicalKeys = nil
         focusMovedDuringWord = false // The replacement verified the field the word is in.
+        Trace.switching.debug("word of \(text.count) letters resumed after a live correction")
     }
 
     private func snapshot(suffix: String = "", revision: UInt64) -> Token {
@@ -678,8 +682,10 @@ final class KeyboardMonitor {
             if !token.isEmpty {
                 token.removeLast()
                 if physicalKeys?.isEmpty == false { physicalKeys?.removeLast() }
+                Trace.switching.debug("backspace: word now \(self.token.count) letters")
                 onProgress?(snapshot(revision: revision))
             } else if let previous {
+                Trace.switching.info("backspace after a finished word of \(previous.text.count) letters, suffix \(previous.suffix.count)")
                 // Erasing the Space after a word continues that word. A correction resets
                 // the monitor, so completedToken still matches the field here.
                 if previous.suffix.count > 1 {
@@ -722,17 +728,25 @@ final class KeyboardMonitor {
         guard let layout = layouts.first(where: { $0.id == currentID }),
               let string = layout.character(key: UInt16(key), shift: flags.contains(.maskShift),
                                             capsLock: flags.contains(.maskAlphaShift))
-        else { token = ""; return }
+        else {
+            Trace.switching.info("key without a character in the current layout: word of \(self.token.count) letters dropped")
+            token = ""; return
+        }
         // The application composes a dead key with the next one (c a f ' e is café on US
         // International). Counting keys would then erase a character before the word: leave it.
         if composing || layout.isDeadKey(key: UInt16(key), shift: flags.contains(.maskShift),
                                          capsLock: flags.contains(.maskAlphaShift)) {
+            Trace.switching.info("dead key: word of \(self.token.count) letters dropped")
             composing = true; token = ""; physicalKeys = []; onCancelAnalysis?(); return
         }
         guard !string.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              token.count + string.count <= 512 else { token = ""; return }
+              token.count + string.count <= 512 else {
+            Trace.switching.info("control character or overlong word: word of \(self.token.count) letters dropped")
+            token = ""; return
+        }
         token += string
         physicalKeys?.append(.init(key: UInt16(key), shift: flags.contains(.maskShift), capsLock: flags.contains(.maskAlphaShift)))
+        Trace.switching.debug("key: word \(self.token.count) letters")
         onProgress?(snapshot(revision: revision))
     }
 

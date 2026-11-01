@@ -105,11 +105,24 @@ func element(_ value: CFTypeRef?) -> AXUIElement? {
     guard let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
     return unsafeBitCast(value, to: AXUIElement.self)
 }
-func frontWindow() -> AXUIElement? { element(attribute(ax, kAXFocusedWindowAttribute)) ?? element(attribute(ax, kAXMainWindowAttribute)) }
-func windowTitle() -> String { frontWindow().flatMap { attribute($0, kAXTitleAttribute) as? String } ?? "" }
-let titleDeadline = Date().addingTimeInterval(3)
-while !windowTitle().contains(marker), Date() < titleDeadline { Thread.sleep(forTimeInterval: 0.1) }
-guard windowTitle().contains(marker) else { fail("The front window is not a test window: \(windowTitle())") }
+func titleOf(_ window: AXUIElement) -> String { attribute(window, kAXTitleAttribute) as? String ?? "" }
+// The window whose title contains the marker, among every window of the application. An app can
+// have more than one (YasnoLab's native and WebKit windows, a browser's windows and tabs); the
+// marked one may not be the main window, so raise it to the front before typing.
+func markedWindow() -> AXUIElement? {
+    (attribute(ax, kAXWindowsAttribute) as? [AXUIElement])?.first { titleOf($0).contains(marker) }
+}
+let markDeadline = Date().addingTimeInterval(3)
+while markedWindow() == nil, Date() < markDeadline { Thread.sleep(forTimeInterval: 0.1) }
+guard let marked = markedWindow() else { fail("No test window with marker \(marker.debugDescription)") }
+AXUIElementSetAttributeValue(marked, kAXMainAttribute as CFString, kCFBooleanTrue)
+AXUIElementPerformAction(marked, kAXRaiseAction as CFString)
+Thread.sleep(forTimeInterval: 0.3)
+func frontWindow() -> AXUIElement? { markedWindow() }
+// The application's genuinely focused window, for the safety guard: keys must not go anywhere but
+// the raised test window.
+func windowTitle() -> String { element(attribute(ax, kAXFocusedWindowAttribute)).map(titleOf) ?? "" }
+guard windowTitle().contains(marker) else { fail("The test window could not be raised; front is \(windowTitle().debugDescription)") }
 
 func find(_ match: (AXUIElement) -> Bool) -> AXUIElement? {
     guard let window = frontWindow() else { return nil }

@@ -10,12 +10,14 @@ YASNO_REPO="${YASNO_RELEASE_REPO:-mavesr/yasno}"
 YASNO_VERSION="${1:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' dist/Ясно.app/Contents/Info.plist)}"
 YASNO_ZIP="dist/Yasno-$YASNO_VERSION-universal.zip"
 YASNO_DMG="dist/Yasno-$YASNO_VERSION-universal-notarized.dmg"
-for file in "$YASNO_ZIP" "$YASNO_DMG"; do
-    if [[ ! -f "$file" ]]; then
-        print -u2 "Missing $file. Run: YASNO_NOTARY_PROFILE=yasno-distribution ./scripts/package-dmg.sh"
-        exit 1
-    fi
-done
+if [[ ! -f "$YASNO_ZIP" ]]; then
+    print -u2 "Missing $YASNO_ZIP. Run: YASNO_NOTARY_PROFILE=yasno-distribution ./scripts/package-dmg.sh"
+    exit 1
+fi
+# Updates need only the zip. The DMG is for first installs and is attached when present;
+# a release without one leaves the DMG of an earlier release as the download.
+YASNO_ASSETS=("$YASNO_ZIP")
+[[ -f "$YASNO_DMG" ]] && YASNO_ASSETS+=("$YASNO_DMG")
 
 # Check the archive exactly as the updater will: Developer ID, notarized, right version.
 YASNO_CHECK="$(mktemp -d)"
@@ -39,7 +41,7 @@ if [[ "$(/usr/libexec/PlistBuddy -c 'Print :YasnoUpdateRepository' "$YASNO_APP/C
     exit 1
 fi
 
-gh release create "v$YASNO_VERSION" "$YASNO_ZIP" "$YASNO_DMG" \
+gh release create "v$YASNO_VERSION" "${YASNO_ASSETS[@]}" \
     --repo "$YASNO_REPO" --title "Ясно $YASNO_VERSION" \
     --notes "${YASNO_RELEASE_NOTES:-Ясно $YASNO_VERSION}"
 print -r -- "Published v$YASNO_VERSION to $YASNO_REPO"

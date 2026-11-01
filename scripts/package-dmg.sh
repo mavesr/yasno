@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Signed universal distribution, separate from the locally installed build.
+# Signed arm64 (Apple Silicon) distribution, separate from the locally installed build.
 # Optional: YASNO_NOTARY_PROFILE names an existing notarytool Keychain profile.
 set -euo pipefail
 cd "${0:A:h:h}"
@@ -43,13 +43,6 @@ if [[ -n "${YASNO_PREBUILT_APP:-}" ]]; then
 else
     YASNO_APP_PATH="$YASNO_APP" YASNO_SIGNING_IDENTITY=- YASNO_SKIP_DIAGNOSE=1 \
         ./scripts/build.sh --scratch-path .build/distribution-arm64 --triple arm64-apple-macosx14.0
-    swift build -c release --scratch-path .build/distribution-x86_64 \
-        --triple x86_64-apple-macosx14.0 --product Yasno
-    YASNO_INTEL_DIR="$(swift build -c release --scratch-path .build/distribution-x86_64 \
-        --triple x86_64-apple-macosx14.0 --show-bin-path)"
-    lipo -create "$YASNO_APP/Contents/MacOS/Yasno" "$YASNO_INTEL_DIR/Yasno" \
-        -output "$YASNO_STAGE/Yasno-universal"
-    mv "$YASNO_STAGE/Yasno-universal" "$YASNO_APP/Contents/MacOS/Yasno"
     chmod 755 "$YASNO_APP/Contents/MacOS/Yasno"
     # The generated iconset is only a build intermediate, not a runtime resource.
     rm -rf "$YASNO_APP/Contents/Resources/AppIcon.iconset"
@@ -63,7 +56,6 @@ if [[ "$(codesign -dv --verbose=4 "$YASNO_APP" 2>&1)" != *'Authority=Developer I
     exit 1
 fi
 lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch arm64
-lipo "$YASNO_APP/Contents/MacOS/Yasno" -verify_arch x86_64
 "$YASNO_APP/Contents/MacOS/Yasno" --diagnose
 YASNO_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_APP/Contents/Info.plist")"
 YASNO_RELEASE_DIR="$(mktemp -d "$YASNO_WORK/release-$YASNO_VERSION.XXXXXX")"
@@ -95,8 +87,8 @@ PY
     fi
     print -r -- "Проверка Apple для Ясно $YASNO_VERSION выполняется.
 Запрос: $YASNO_APP_SUBMISSION_ID
-Подписанный DMG: Yasno-$YASNO_VERSION-universal-signed.dmg
-После проверки появится Yasno-$YASNO_VERSION-universal-notarized.dmg.
+Подписанный DMG: Yasno-$YASNO_VERSION-arm64-signed.dmg
+После проверки появится Yasno-$YASNO_VERSION-arm64-notarized.dmg.
 Локальная задача ожидает ответ Apple; после перезагрузки её можно продолжить:
 ./scripts/resume-notarization.sh" > "$YASNO_ROOT/dist/Нотарификация.txt"
     xcrun notarytool wait "$YASNO_APP_SUBMISSION_ID" \
@@ -108,7 +100,7 @@ PY
     spctl --assess --type execute --verbose=2 "$YASNO_APP"
     YASNO_STATUS=notarized
     # The stapled app alone is the update archive the running copies download from GitHub.
-    ditto -c -k --keepParent "$YASNO_APP" "$YASNO_STAGE/Yasno-$YASNO_VERSION-universal.zip"
+    ditto -c -k --keepParent "$YASNO_APP" "$YASNO_STAGE/Yasno-$YASNO_VERSION-arm64.zip"
     print -r -- "Приложение Ясно $YASNO_VERSION проверено Apple.
 Завершается упаковка и отдельная проверка DMG." > "$YASNO_ROOT/dist/Нотарификация.txt"
 fi
@@ -130,7 +122,7 @@ YASNO_MOUNTED=1
 "$YASNO_ROOT/.build/dmg-tools/bin/python" scripts/dmg-layout.py "$YASNO_MOUNT"
 hdiutil detach "$YASNO_MOUNT"
 YASNO_MOUNTED=0
-YASNO_DMG="$YASNO_STAGE/Yasno-$YASNO_VERSION-universal-$YASNO_STATUS.dmg"
+YASNO_DMG="$YASNO_STAGE/Yasno-$YASNO_VERSION-arm64-$YASNO_STATUS.dmg"
 hdiutil convert "$YASNO_RW_IMAGE" -format UDZO -imagekey zlib-level=9 \
     -o "$YASNO_DMG" -ov
 codesign --force --sign "$YASNO_SIGNING_IDENTITY" --timestamp "$YASNO_DMG"
@@ -145,8 +137,8 @@ if [[ -n "${YASNO_NOTARY_PROFILE:-}" ]]; then
     spctl --assess --type open --context context:primary-signature --verbose=2 "$YASNO_DMG"
 fi
 mv -f "$YASNO_DMG" "$YASNO_ROOT/dist/${YASNO_DMG:t}"
-if [[ -f "$YASNO_STAGE/Yasno-$YASNO_VERSION-universal.zip" ]]; then
-    mv -f "$YASNO_STAGE/Yasno-$YASNO_VERSION-universal.zip" "$YASNO_ROOT/dist/"
+if [[ -f "$YASNO_STAGE/Yasno-$YASNO_VERSION-arm64.zip" ]]; then
+    mv -f "$YASNO_STAGE/Yasno-$YASNO_VERSION-arm64.zip" "$YASNO_ROOT/dist/"
 fi
 YASNO_DMG="$YASNO_ROOT/dist/${YASNO_DMG:t}"
 (cd "$YASNO_ROOT/dist" && shasum -a 256 "${YASNO_DMG:t}" > "${YASNO_DMG:t}.sha256")

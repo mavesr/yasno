@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = ["core"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# Tests load four 50k-word dictionaries; keep them fast in debug builds too.
+[profile.dev.package."*"]
+opt-level = 2
+[profile.test]
+opt-level = 2

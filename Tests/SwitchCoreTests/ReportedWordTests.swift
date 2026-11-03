@@ -42,6 +42,28 @@ final class ReportedWordTests: XCTestCase {
         }
     }
 
+    func testCommonRussianWordOnUkrainianLayoutSwitchesDespiteUkrainianLookingContext() throws {
+        // Russian typed by habit on the Apple Ukrainian layout spells real Ukrainian words
+        // (установи → установі, версию → версію, и → і), so the sentence looked Ukrainian
+        // and «єтот» stayed instead of becoming «этот».
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let active = [abc, ru, uk]
+        XCTAssertEqual(uk.convert("установі свежую версію і на", to: ru), "установи свежую версию и на")
+        for context in ["", "установі свежую версію і на ", "і на "] {
+            let request = CorrectionRequest(text: "єтот", source: uk, layouts: active, preferredTargetID: ru.id,
+                                            correctSpelling: true, whileTyping: false)
+            XCTAssertTrue(detector.mayCorrect(request))
+            XCTAssertEqual(detector.correction(request, context: context)?.replacement, "этот", context)
+            XCTAssertEqual(detector.correction(request.with(text: "Єтот"), context: context)?.replacement, "Этот", context)
+        }
+        // Valid Ukrainian words in that sentence stay as typed.
+        for word in ["версію", "на", "мак"] {
+            let request = CorrectionRequest(text: word, source: uk, layouts: active, preferredTargetID: ru.id,
+                                            correctSpelling: true, whileTyping: false)
+            XCTAssertNil(detector.correction(request, context: "установі свежую "), word)
+        }
+    }
+
     func testCurrencySignAfterWordStays() throws {
         // Shift-4 after a word means $, as typed; the Russian layout alone would make it %.
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")

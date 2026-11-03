@@ -18,6 +18,30 @@ final class ReportedWordTests: XCTestCase {
         XCTAssertEqual(detector.correction(request, context: "")?.replacement, "тут")
     }
 
+    func testTotConvertsToRussianAndDoesNotComeBack() throws {
+        // German "tot" ranked as common, so tot on ABC never became "еще", and "еще"
+        // typed on the Ukrainian layout (not a Ukrainian word) turned back into tot.
+        let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")
+        let active = [abc, ru, uk]
+        func decide(_ text: String, _ source: KeyboardLayout, typing: Bool = false, paused: Bool = false) -> String? {
+            let request = CorrectionRequest(text: text, source: source, layouts: active, preferredTargetID: ru.id,
+                                            correctSpelling: true, whileTyping: typing, paused: paused)
+            guard detector.mayCorrect(request) else { return nil }
+            return detector.correction(request, context: "")?.replacement
+        }
+        XCTAssertEqual(decide("tot", abc), "еще")
+        XCTAssertEqual(decide("Tot", abc), "Еще")
+        XCTAssertEqual(detector.correction(CorrectionRequest(text: "tot", source: abc, layouts: active,
+            preferredTargetID: ru.id, correctSpelling: true, whileTyping: false), context: "я хочу ")?.replacement, "еще")
+        for source in [ru, uk] {
+            for word in ["еще", "Еще", "ещё"] {
+                XCTAssertNil(decide(word, source), "\(word) on \(source.id)")
+                XCTAssertNil(decide(word, source, typing: true), "\(word) on \(source.id) while typing")
+                XCTAssertNil(decide(word, source, typing: true, paused: true), "\(word) on \(source.id) after a pause")
+            }
+        }
+    }
+
     func testCurrencySignAfterWordStays() throws {
         // Shift-4 after a word means $, as typed; the Russian layout alone would make it %.
         let abc = try layout("ABC"), ru = try layout("Russian"), uk = try layout("Ukrainian")

@@ -1,0 +1,40 @@
+name: Windows
+
+on:
+  push:
+    paths: ["windows/**", "Sources/SwitchCore/Resources/**", ".github/workflows/windows.yml"]
+  pull_request:
+    paths: ["windows/**", "Sources/SwitchCore/Resources/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: rustup toolchain install stable --profile minimal --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows
+      - name: Test
+        run: cargo test --release --workspace
+      - name: Build x64
+        run: cargo build --release -p yasno --target x86_64-pc-windows-msvc
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/x86_64-pc-windows-msvc/release/yasno.exe dist/Yasno.exe
+          Copy-Item ../Sources/SwitchCore/Resources/ATTRIBUTION.md dist/
+          Copy-Item ../Sources/SwitchCore/Resources/LICENSE_ru_RU.txt dist/
+          Copy-Item ../Sources/SwitchCore/Resources/LICENSE_uk_UA.txt dist/
+          Copy-Item ../Sources/SwitchCore/Resources/MPL-1.1.txt dist/
+          Copy-Item README.md dist/README.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Yasno-windows-x64
+          path: windows/dist

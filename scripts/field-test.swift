@@ -16,12 +16,15 @@
 // the user would type them: `vbh` on the Russian layout is already «мир».
 //
 // Fields are read through Accessibility; canvas editors (Google Docs) with Select All + Copy,
-// and the clipboard is restored afterwards. Only the fixed sample words are ever printed.
+// and the clipboard is restored afterwards, also when a run stops early, unless the user has
+// copied something since. Only the fixed sample words are ever printed.
 import Cocoa
 import Carbon
 import ApplicationServices
 
-func fail(_ text: String) -> Never { fputs(text + "\n", stderr); exit(2) }
+/// Gives the clipboard back on every exit: a run that stops halfway has replaced it too.
+var restoreOnExit: () -> Void = {}
+func fail(_ text: String) -> Never { restoreOnExit(); fputs(text + "\n", stderr); exit(2) }
 
 struct Case {
     let layout: String
@@ -201,7 +204,12 @@ let pasteboard = NSPasteboard.general
 let savedItems: [[NSPasteboard.PasteboardType: Data]] = (pasteboard.pasteboardItems ?? []).map { item in
     Dictionary(uniqueKeysWithValues: item.types.compactMap { type in item.data(forType: type).map { (type, $0) } })
 }
+/// The clipboard's change count after this driver last copied into it; nil while it never has.
+var ownChange: Int?
 func restoreClipboard() {
+    // Untouched, or the user has copied something since: leave their clipboard as it is.
+    guard let own = ownChange, pasteboard.changeCount == own else { return }
+    ownChange = nil
     pasteboard.clearContents()
     let items = savedItems.map { saved -> NSPasteboardItem in
         let item = NSPasteboardItem()
@@ -210,6 +218,7 @@ func restoreClipboard() {
     }
     if !items.isEmpty { pasteboard.writeObjects(items) }
 }
+restoreOnExit = restoreClipboard
 
 // Google Docs types into a hidden field that never holds the text: read it via the clipboard.
 let canvas: Bool = {
@@ -246,11 +255,13 @@ func readField() -> String {
     if let text = axText() { return normalize(text) }
     pasteboard.clearContents()
     let before = pasteboard.changeCount
+    ownChange = before
     menuCommand("A")
     Thread.sleep(forTimeInterval: 0.25)
     menuCommand("C")
     let deadline = Date().addingTimeInterval(1.5)
     while pasteboard.changeCount == before, Date() < deadline { Thread.sleep(forTimeInterval: 0.03) }
+    ownChange = pasteboard.changeCount
     let text = pasteboard.string(forType: .string) ?? ""
     press(124) // Collapse the selection to the end.
     Thread.sleep(forTimeInterval: 0.1)

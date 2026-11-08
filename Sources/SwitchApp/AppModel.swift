@@ -179,11 +179,11 @@ final class AppModel: ObservableObject {
         sourceObserver = nil; layoutsObserver = nil; appObserver = nil; launchObserver = nil; terminateObserver = nil
         if let focusObserver { CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(focusObserver), .commonModes) }
         focusObserver = nil
-        accessibilityQueue.async { AccessibleEditor.releasePreparedApplications() }
-        // Do not replay keys into a word that is still temporarily selected. The
-        // barrier waits for AX cleanup, then allow replay acknowledgements to drain.
+        // Do not replay keys into a word that is still temporarily selected. Web views keep
+        // their AX tree until the edit in flight has restored its selection; only then are
+        // they returned to their default mode and replay acknowledgements allowed to drain.
         worker.async { [self] in
-            accessibilityQueue.sync {}
+            accessibilityQueue.sync { AccessibleEditor.releasePreparedApplications() }
             DispatchQueue.main.async { self.finishShutdown(completion: completion) }
         }
     }
@@ -595,9 +595,8 @@ final class AppModel: ObservableObject {
             corrections += 1
             receipt = Receipt(editor: editor, original: original, replacement: replacement,
                               range: CFRange(location: range.location, length: replacement.utf16.count),
-                              caret: CFRange(location: caret.length == 0
-                                  ? caret.location + replacement.utf16.count - range.length
-                                  : range.location + replacement.utf16.count, length: 0), sourceID: sourceID,
+                              caret: CFRange(location: ReplacementTransaction.caretLocation(after: range, replacement: replacement,
+                                                                                            caret: caret), length: 0), sourceID: sourceID,
                               layoutID: target.id, cycle: cycle, live: live, physicalKeys: physicalKeys,
                               keystrokes: keystrokeSuffix.map { ($0, monitor.revision) })
             // The transaction confirmed focus just before returning. Repeating the full AX
@@ -781,7 +780,8 @@ final class AppModel: ObservableObject {
                         let compatible = KeyboardLayout.cycleOrder(layouts).filter { origin.convert(receipt.original, to: $0) != nil }
                         self.receipt = Receipt(editor: editor, original: receipt.original, replacement: receipt.original,
                             range: CFRange(location: receipt.range.location, length: receipt.original.utf16.count),
-                            caret: CFRange(location: caret.location + receipt.original.utf16.count - receipt.replacement.utf16.count, length: 0),
+                            caret: CFRange(location: ReplacementTransaction.caretLocation(after: receipt.range, replacement: receipt.original,
+                                                                                          caret: caret), length: 0),
                             sourceID: receipt.sourceID, layoutID: receipt.sourceID,
                             cycle: LayoutCycle(layoutIDs: compatible.map(\.id)))
                         _ = self.selectManually(origin, bundleID: app.bundleIdentifier)

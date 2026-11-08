@@ -15,7 +15,6 @@ export YASNO_NOTARY_PROFILE="${YASNO_NOTARY_PROFILE:-$YASNO_PENDING_FIELDS[3]}"
 export YASNO_NOTARY_TIMEOUT="${YASNO_NOTARY_TIMEOUT:-168h}"
 YASNO_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_PREBUILT_APP/Contents/Info.plist")"
 print -r -- "Проверка Apple выполняется. Запрос: $YASNO_APP_SUBMISSION_ID
-Подписанный DMG: Yasno-$YASNO_VERSION-arm64-signed.dmg
 После успешной проверки появится Yasno-$YASNO_VERSION-arm64-notarized.dmg.
 Эта задача работает, пока Mac включён. Во время сна проверка Apple продолжается,
 а завершение сборки на Mac сможет продолжиться после пробуждения.
@@ -29,7 +28,7 @@ if ./scripts/package-dmg.sh; then
 else
     YASNO_EXIT=$?
     print -r -- "Завершение сборки остановилось (код $YASNO_EXIT).
-Подписанный DMG сохранён, но успешная нотарификация пока не подтверждена.
+Нотарификация пока не подтверждена. DMG не сохранён, он собирается заново при продолжении.
 Журнал: .build/distribution/notarization-background.log
 Для повторного ожидания существующего запроса: ./scripts/resume-notarization.sh" > "$YASNO_STATUS_FILE"
     exit "$YASNO_EXIT"

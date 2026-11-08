@@ -47,13 +47,21 @@ enum ReplacementTransaction {
         // very renderer that is processing the insertion.
         while !applied(), valid(), e.now() < editDeadline { e.pause() }
         guard valid(), e.focused(), applied() else { restoreIfOwned(); return .failed }
-        let delta = replacement.utf16.count - expected.utf16.count
-        let end = caret.length == 0 ? caret.location + delta : range.location + replacement.utf16.count
-        let finalCaret = CFRange(location: end, length: 0)
+        let finalCaret = CFRange(location: caretLocation(after: range, replacement: replacement, caret: caret), length: 0)
         guard valid(), e.select(finalCaret) else { return .failed }
         let caretDeadline = min(deadline, e.now() + e.timeout)
         while !same(e.selection(), finalCaret), valid(), e.now() < caretDeadline { e.pause() }
         guard valid(), e.focused(), same(e.selection(), finalCaret) else { return .failed }
         return .success
+    }
+
+    /// The caret once `range` holds `replacement`. After a selection: at the end of the new text.
+    /// After the word: moved by the change in length. Inside the word, where a Shift undo can
+    /// find it after the arrows moved it back: where it was, at most at the end of the new text.
+    static func caretLocation(after range: CFRange, replacement: String, caret: CFRange) -> Int {
+        let end = range.location + replacement.utf16.count
+        if caret.length > 0 { return end }
+        if caret.location >= range.location + range.length { return caret.location + end - (range.location + range.length) }
+        return min(caret.location, end)
     }
 }

@@ -42,7 +42,7 @@ enum KeyTrace {
         var length = 0
         var units = [UniChar](repeating: 0, count: 8)
         event.keyboardGetUnicodeString(maxStringLength: units.count, actualStringLength: &length, unicodeString: &units)
-        let text = String(utf16CodeUnits: units, count: length).unicodeScalars.map { String(format: "U+%04X", $0.value) }
+        let text = String(utf16CodeUnits: units, count: min(length, units.count)).unicodeScalars.map { String(format: "U+%04X", $0.value) }
         let kind = type == .keyDown ? "down" : type == .keyUp ? "up" : "flags"
         write([location, kind, "key=\(event.getIntegerValueField(.keyboardEventKeycode))",
                "flags=" + String(event.flags.rawValue, radix: 16),

@@ -30,9 +30,7 @@ struct AccessibleEditor {
         // Another copy of Ясно (a test build) turns the mode off when it quits, and the field
         // disappears again: an application prepared earlier is checked each time it comes forward.
         if let known {
-            var value: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(app, known, &value) == .success,
-                  (value as? Bool) == false else { return }
+            if !needsReassertion(known, of: app) { return }
             _ = AXUIElementSetAttributeValue(app, known, kCFBooleanTrue)
             return
         }
@@ -46,6 +44,23 @@ struct AccessibleEditor {
         let mode = Self.attribute(attribute, after: AXUIElementSetAttributeValue(app, attribute, kCFBooleanTrue))
         if mode != attribute { _ = AXUIElementSetAttributeValue(app, mode, kCFBooleanTrue) }
         preparedLock.lock(); prepared[pid] = mode; preparedLock.unlock()
+    }
+
+    /// Dia (and other shells) accept AXManualAccessibility but never report it back: reading it
+    /// fails with kAXErrorAttributeUnsupported. A mode that cannot be read is set again, else a
+    /// shell that dropped it (another copy of Ясно quit) keeps its web fields hidden for good.
+    private static func needsReassertion(_ attribute: CFString, of app: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(app, attribute, &value)
+        return needsReassertion(result: result, value: value as? Bool)
+    }
+
+    static func needsReassertion(result: AXError, value: Bool?) -> Bool {
+        switch result {
+        case .success: return value != true
+        case .cannotComplete: return false // Busy: try again next activation, never block on it.
+        default: return true
+        }
     }
 
     /// Chrome 156 no longer knows AXManualAccessibility: it answers kAXErrorAttributeUnsupported,
@@ -62,7 +77,7 @@ struct AccessibleEditor {
     /// answer the settable query in time, and AXManualAccessibility is right for every Electron.
     static func attribute(bundleID: String?, bundleURL: URL?, manualSettable: Bool) -> CFString? {
         // Chromium accepts the attribute without always reporting it as settable.
-        let chromium = ["company.thebrowser.Browser", "com.google.Chrome", "com.microsoft.edgemac",
+        let chromium = ["company.thebrowser.Browser", "company.thebrowser.dia", "com.google.Chrome", "com.microsoft.edgemac",
                         "com.brave.Browser", "org.chromium.Chromium"].contains(bundleID ?? "")
         if chromium || manualSettable { return "AXManualAccessibility" as CFString }
         guard let bundleURL, embedsChromium(bundleURL) else { return nil }

@@ -54,6 +54,17 @@ final class AccessibleEditorTests: XCTestCase {
         XCTAssertEqual(mode("AXEnhancedUserInterface", .notImplemented), "AXEnhancedUserInterface")
     }
 
+    func testModeThatCannotBeReadBackIsSetAgain() {
+        // Dia accepts AXManualAccessibility but answers kAXErrorAttributeUnsupported when asked.
+        XCTAssertTrue(AccessibleEditor.needsReassertion(result: .attributeUnsupported, value: nil))
+        XCTAssertTrue(AccessibleEditor.needsReassertion(result: .noValue, value: nil))
+        XCTAssertTrue(AccessibleEditor.needsReassertion(result: .success, value: false))
+        XCTAssertFalse(AccessibleEditor.needsReassertion(result: .success, value: true))
+        XCTAssertFalse(AccessibleEditor.needsReassertion(result: .cannotComplete, value: nil))
+        XCTAssertEqual(AccessibleEditor.attribute(bundleID: "company.thebrowser.dia", bundleURL: nil,
+                                                  manualSettable: false) as String?, "AXManualAccessibility")
+    }
+
     func testLongFieldIsNotCopiedToLearnItShowsText() {
         XCTAssertFalse(AccessibleEditor.showsNoText(role: "AXTextArea", characterCount: { 50_000 },
                                                     value: { XCTFail("the whole document was read"); return nil }))

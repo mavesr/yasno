@@ -14,6 +14,13 @@ public protocol Typist: AnyObject {
 
 /// The Linux counterpart of AppModel in its keystroke ("blind") mode: the same decisions
 /// through Detector, the same receipts for a Shift undo and the same layout cycle.
+/// YASNO_TRACE=1: decisions (not the text of other words) to standard error, for testing.
+let tracing = ProcessInfo.processInfo.environment["YASNO_TRACE"] == "1"
+func trace(_ message: @autoclosure () -> String) {
+    guard tracing else { return }
+    FileHandle.standardError.write(Data(("[yasno] " + message() + "\n").utf8))
+}
+
 public final class Engine {
     public struct Receipt {
         let original: String
@@ -134,6 +141,12 @@ public final class Engine {
     }
 
     public var layoutNames: String { layouts.map(\.name).joined(separator: " · ") }
+
+    /// Any thread: the layout as the desktop reports it, for traces.
+    func currentIDSafe() -> String {
+        guard let index = backend?.currentIndex(), index >= 0, index < specs.count else { return "?" }
+        return specs[index].id
+    }
 
     func currentID() -> String {
         guard let index = backend?.currentIndex(), index >= 0, index < specs.count else { return "" }
@@ -283,6 +296,7 @@ public final class Engine {
         let common = typed.count + suffix.count - edit.deletions
         let erased = String((typed + suffix).dropFirst(max(common, 0)))
         let restore = erased.compactMap { Self.stroke(for: $0, in: origin, capsLock: caps) }
+        trace("type: erase \(edit.deletions) of \(typed.debugDescription)+\(suffix.debugDescription), insert \(edit.insertion.debugDescription) in \(target.id), current \(currentIDSafe())")
         guard strokes.count == edit.insertion.count else { return false }
         typist.settle()
         typist.erase(edit.deletions)
@@ -290,6 +304,7 @@ public final class Engine {
         var selected = false
         queue.sync { selected = self.currentID() == target.id || self.selectLayout(target) }
         hub.progress()
+        trace("type: selected \(selected), now \(currentIDSafe())")
         guard selected else {
             if restore.count == erased.count { typist.press(restore) }
             return false
@@ -352,6 +367,7 @@ public final class Engine {
     // MARK: Shift
 
     private func manual(after expectedToken: WordMonitor.Token?) {
+        trace("shift: token \(expectedToken?.text.debugDescription ?? "nil") suffix \(expectedToken?.suffix.debugDescription ?? "nil"), receipt \(receipt.map { "\($0.original)->\($0.replacement)" } ?? "nil"), enabled \(monitor.enabled)")
         cancelTypingTask()
         guard monitor.enabled else { return }
         sourceChanged()
@@ -359,7 +375,7 @@ public final class Engine {
         let sourceID = currentID()
         let app = activeApp?.id ?? ""
         let preferredID = settings.values.preferredLayouts[app] ?? settings.values.lastManualCyrillic
-        guard hub.beginGate(revision: revision) else { return }
+        guard hub.beginGate(revision: revision) else { trace("shift: gate refused"); return }
         worker.async { [self] in
             defer { queue.async { self.hub.endGate(revision: revision) } }
             if !manualByKeystrokes(expectedToken: expectedToken, receipt: receipt, revision: revision, sourceID: sourceID,
@@ -377,7 +393,9 @@ public final class Engine {
     private func manualByKeystrokes(expectedToken: WordMonitor.Token?, receipt: Receipt?, revision: UInt64, sourceID: String,
                                     layouts: [KeyboardLayout], preferredID: String?, app: String) -> Bool {
         func type(_ edit: KeystrokeEdit?, typed: String, suffix: String, from origin: KeyboardLayout, in layout: KeyboardLayout) -> Bool {
-            guard let edit, hub.revision == revision, !secureInput, hub.commitGate(revision: revision) else { return false }
+            guard let edit, hub.revision == revision, !secureInput, hub.commitGate(revision: revision) else {
+                trace("shift: no edit \(edit == nil) revision \(hub.revision) vs \(revision)"); return false
+            }
             return self.type(edit, typed: typed, suffix: suffix, from: origin, in: layout)
         }
         let current = layouts.first(where: { $0.id == sourceID })

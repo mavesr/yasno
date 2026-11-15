@@ -350,3 +350,17 @@ fn windows_comma_key_after_a_converted_word() {
     assert_eq!(decide(&f, "what?", &f.abc, &all, false, ru), None);
     assert_eq!(decide(&f, "really?", &f.abc, &all, false, ru), None);
 }
+
+/// Windows runners (and many PCs) have US and German installed: both type "hello" from the
+/// same keys, which must not block the correction.
+#[test]
+fn two_latin_layouts_with_the_same_word_still_correct() {
+    let d = Detector::default();
+    let all_owned = layouts::all();
+    let all: Vec<&KeyboardLayout> = all_owned.iter().collect();
+    let ru = all.iter().find(|l| l.id == "00000419").unwrap();
+    for (typed, meant) in [("руддщ", "hello"), ("цщкдв", "world"), ("ыщьу", "some"), ("ьщку", "more")] {
+        let s = d.suggest_completed(typed, ru, &all, Query::default().preferring("00000419"), true).expect(typed);
+        assert_eq!((s.replacement.as_str(), s.target.id.as_str()), (meant, "00000409"), "{typed}");
+    }
+}

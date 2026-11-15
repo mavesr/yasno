@@ -469,7 +469,16 @@ impl Detector {
         if let Some(p) = candidates.iter().find(|c| c.replacement == best.replacement && Some(&c.target.id) == preference.as_ref()) {
             return Some(p.clone());
         }
-        if !manual && candidates.iter().any(|c| c.replacement == best.replacement && c.target.languages != best.target.languages) {
+        let same: Vec<&Suggestion<'a>> = candidates.iter().filter(|c| c.replacement == best.replacement).collect();
+        if !manual && same.iter().any(|c| c.target.languages != best.target.languages) {
+            // Two Latin layouts that type the same word (US and German for "hello"): the word is
+            // right either way; take the layout whose own language knows it best. Windows only:
+            // the Mac rarely has two Latin layouts with the same letters.
+            if same.iter().all(|c| !c.target.is_cyrillic()) {
+                let rank = |c: &&&Suggestion<'a>| c.target.languages.first()
+                    .and_then(|l| self.rank(&best.replacement, std::slice::from_ref(l))).unwrap_or(u32::MAX);
+                return same.iter().min_by_key(rank).map(|c| (*c).clone());
+            }
             return None;
         }
         Some(best)

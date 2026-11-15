@@ -9,6 +9,9 @@ import YasnoLinux
 // yasno --diagnose            print what Yasno sees on this desktop
 // yasno --check-access        exit status 0 when the keyboards and /dev/uinput can be used
 let arguments = CommandLine.arguments
+// Started from a folder that is deleted next (the installer's temporary folder): child
+// processes could not start there and Ясно quit at once. Work from the home folder.
+_ = FileManager.default.changeCurrentDirectoryPath(FileManager.default.homeDirectoryForCurrentUser.path)
 if arguments.contains("--version") {
     print(YasnoVersion.current)
     exit(0)

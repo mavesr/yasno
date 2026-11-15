@@ -1,4 +1,8 @@
+#if canImport(AppKit)
 import AppKit
+#else
+import Foundation
+#endif
 
 /// Morphology-aware word check through the macOS spelling service, which knows
 /// inflected forms (песках, українці, aufgetretene) that a 50k frequency list
@@ -18,9 +22,16 @@ public final class SystemLexicon {
     /// Tests and validation runs can switch the service off to isolate the dictionary rules.
     public var isEnabled = true
 
+    #if canImport(AppKit)
     private init() {
         available = Set(NSSpellChecker.shared.availableLanguages)
     }
+    #else
+    private let service = HunspellService()
+    private init() {
+        available = service.languages
+    }
+    #endif
 
     private func usable(_ word: String, _ language: Language) -> Bool {
         // The service checks each word of a string separately: им]я would pass as им + я.
@@ -36,12 +47,17 @@ public final class SystemLexicon {
         cacheLock.unlock()
         if let cached { return cached }
         serviceLock.lock()
+        #if canImport(AppKit)
         let range = autoreleasepool {
             NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0, language: language.rawValue,
                                                 wrap: false, inSpellDocumentWithTag: 0, wordCount: nil)
         }
         serviceLock.unlock()
         let known = range.location == NSNotFound
+        #else
+        let known = service.spell(word, language: language.rawValue)
+        serviceLock.unlock()
+        #endif
         cacheLock.lock()
         if cache.count >= 100_000 { cache.removeAll(keepingCapacity: true) }
         cache[key] = known
@@ -61,10 +77,14 @@ public final class SystemLexicon {
         // drain their pools rarely, so without a pool per call a long run (or a long-lived
         // app) exhausts the port limit and the kernel kills the process.
         serviceLock.lock()
+        #if canImport(AppKit)
         let raw = autoreleasepool {
             NSSpellChecker.shared.guesses(forWordRange: NSRange(location: 0, length: (word as NSString).length), in: word,
                                           language: language.rawValue, inSpellDocumentWithTag: 0) ?? []
         }
+        #else
+        let raw = service.suggest(word, language: language.rawValue)
+        #endif
         serviceLock.unlock()
         let lower = WordText.canonical(word.lowercased())
         var guesses: [String] = []

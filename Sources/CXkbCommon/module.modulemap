@@ -1,0 +1,5 @@
+module CXkbCommon [system] {
+    header "shim.h"
+    link "xkbcommon"
+    export *
+}

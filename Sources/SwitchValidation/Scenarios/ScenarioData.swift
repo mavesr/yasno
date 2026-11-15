@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 
 /// Real sentences and real misspellings prepared by scripts/fetch-testdata.py.
 struct ScenarioData {

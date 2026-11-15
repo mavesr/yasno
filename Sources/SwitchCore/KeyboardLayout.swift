@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Carbon)
 import Carbon
+#endif
 
 public enum Language: String, CaseIterable, Codable {
     case english = "en", german = "de", russian = "ru", ukrainian = "uk"
@@ -18,12 +20,74 @@ public final class KeyboardLayout {
     public let id: String
     public let name: String
     public let languages: [Language]
+    #if canImport(Carbon)
     public let source: TISInputSource
     private let data: CFData
+    #endif
     private var forward: [UInt16: String] = [:]
     private var reverse: [String: UInt16] = [:]
     private var deadKeys: Set<UInt16> = []
 
+    /// The languages a layout writes, from its identifier (an Apple input source ID or an
+    /// XKB layout name such as "xkb:ru" or "xkb:us(intl)"). Nil: not a layout Yasno handles.
+    public static func languages(forID id: String) -> [Language]? {
+        let lower = id.lowercased()
+        if lower.hasPrefix("xkb:") {
+            let name = String(lower.dropFirst(4))
+            let base = name.split(separator: "(").first.map(String.init) ?? name
+            let variant = name.contains("(") ? String(name.split(separator: "(")[1].dropLast()) : ""
+            switch base {
+            case "ua": return [.ukrainian]
+            case "ru": return [.russian]
+            case "de", "at", "ch": return base == "ch" && variant.hasPrefix("fr") ? nil : [.german, .english]
+            case "us", "gb":
+                // Dvorak, Colemak and the like move letters: a key typed there is not a QWERTY slip.
+                return ["", "intl", "alt-intl", "euro", "extd", "mac", "altgr-intl", "basic"].contains(variant) ? [.english, .german] : nil
+            default: return nil
+            }
+        }
+        if lower.contains("ukrainian") { return [.ukrainian] }
+        if lower.contains("russian") { return [.russian] }
+        if lower.contains("german") { return [.german, .english] }
+        if ["com.apple.keylayout.ABC", "com.apple.keylayout.US", "com.apple.keylayout.British",
+            "com.apple.keylayout.ABC-Extended", "com.apple.keylayout.USInternational-PC", "com.apple.keylayout.ABC-QWERTZ"].contains(id) {
+            // Both languages can be written using the same Latin keyboard.
+            return [.english, .german]
+        }
+        return nil
+    }
+
+    /// A layout from ready tables: position (key | 0x100 Shift | 0x200 Caps Lock) → text, and
+    /// the positions that are dead keys. Used on Linux, where XKB supplies the tables.
+    public init?(id: String, name: String, table: [UInt16: String], deadKeys dead: Set<UInt16> = []) {
+        guard let languages = Self.languages(forID: id) else { return nil }
+        self.id = id; self.name = name; self.languages = languages
+        #if canImport(Carbon)
+        return nil
+        #else
+        let mainKeys = Array(UInt16(0)...50) + [93, 94]
+        let otherKeys = (UInt16(0)..<128).filter { !mainKeys.contains($0) }
+        for keys in [mainKeys, otherKeys] {
+          for shift in [false, true] {
+            for key in keys {
+              for capsLock in [false, true] {
+                let position = key | (shift ? 0x100 : 0)
+                let full = position | (capsLock ? 0x200 : 0)
+                guard let value = table[full], !value.isEmpty,
+                      !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+                else { continue }
+                forward[full] = value
+                if dead.contains(full) { deadKeys.insert(full) }
+                if !capsLock, reverse[value] == nil { reverse[value] = position }
+              }
+            }
+          }
+        }
+        apostropheGlyph = Self.apostrophe(forward: forward, reverse: reverse)
+        #endif
+    }
+
+    #if canImport(Carbon)
     public init?(source: TISInputSource) {
         guard let dataPointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData),
               let idPointer = TISGetInputSourceProperty(source, kTISPropertyInputSourceID),
@@ -33,15 +97,8 @@ public final class KeyboardLayout {
         id = Unmanaged<CFString>.fromOpaque(idPointer).takeUnretainedValue() as String
         name = Unmanaged<CFString>.fromOpaque(namePointer).takeUnretainedValue() as String
         data = Unmanaged<CFData>.fromOpaque(dataPointer).takeUnretainedValue()
-        let lower = id.lowercased()
-        if lower.contains("ukrainian") { languages = [.ukrainian] }
-        else if lower.contains("russian") { languages = [.russian] }
-        else if lower.contains("german") { languages = [.german, .english] }
-        else if ["com.apple.keylayout.ABC", "com.apple.keylayout.US", "com.apple.keylayout.British",
-                 "com.apple.keylayout.ABC-Extended", "com.apple.keylayout.USInternational-PC", "com.apple.keylayout.ABC-QWERTZ"].contains(id) {
-            // Both languages can be written using the same Latin keyboard.
-            languages = [.english, .german]
-        } else { return nil }
+        guard let languages = Self.languages(forID: id) else { return nil }
+        self.languages = languages
 
         let mainKeys = Array(UInt16(0)...50) + [93, 94]
         let otherKeys = (UInt16(0)..<128).filter { !mainKeys.contains($0) }
@@ -88,6 +145,7 @@ public final class KeyboardLayout {
             0, &dead, buffer.count, &length, &buffer)
         return result == noErr && length == 0 && dead != 0
     }
+    #endif
 
     /// The text this key leaves in the field depends on the next key: the application composes it.
     public func isDeadKey(key: UInt16, shift: Bool, capsLock: Bool = false) -> Bool {
@@ -147,7 +205,16 @@ public final class KeyboardLayout {
         return output
     }
 
+    #if canImport(Carbon)
     public func select() -> Bool { TISSelectInputSource(source) == noErr }
+    #else
+    /// Set by the Linux app: selects a layout through the desktop's own switcher.
+    public static var selector: ((KeyboardLayout) -> Bool)?
+    /// Set by the Linux app: the selected layout's ID and the enabled layouts.
+    public static var currentProvider: (() -> String)?
+    public static var installedProvider: (() -> [KeyboardLayout])?
+    public func select() -> Bool { Self.selector?(self) ?? false }
+    #endif
 
     public static func cycleOrder(_ layouts: [KeyboardLayout]) -> [KeyboardLayout] {
         func priority(_ layout: KeyboardLayout) -> Int {
@@ -162,6 +229,7 @@ public final class KeyboardLayout {
         }
     }
 
+    #if canImport(Carbon)
     public static func currentID() -> String {
         let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
         guard let p = TISGetInputSourceProperty(source, kTISPropertyInputSourceID) else { return "" }
@@ -172,4 +240,28 @@ public final class KeyboardLayout {
         let sources = TISCreateInputSourceList(nil, !enabledOnly).takeRetainedValue() as! [TISInputSource]
         return sources.compactMap(KeyboardLayout.init)
     }
+    #else
+    public static func currentID() -> String { currentProvider?() ?? "" }
+
+    /// Enabled layouts come from the desktop. All layouts (tests, validation) are the Apple
+    /// tables recorded on a Mac, so the Linux build is checked against the same keys as the Mac.
+    public static func installed(enabledOnly: Bool = true) -> [KeyboardLayout] {
+        if enabledOnly { return installedProvider?() ?? [] }
+        return appleReference
+    }
+
+    public static let appleReference: [KeyboardLayout] = {
+        guard let url = Bundle.module.url(forResource: "apple-layouts", withExtension: "json", subdirectory: "Resources"),
+              let data = try? Data(contentsOf: url),
+              let entries = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return entries.compactMap { entry in
+            guard let id = entry["id"] as? String, let name = entry["name"] as? String,
+                  let keys = entry["keys"] as? [String: String] else { return nil }
+            var table: [UInt16: String] = [:]
+            for (position, value) in keys { if let p = UInt16(position) { table[p] = value } }
+            let dead = Set((entry["dead"] as? [Int] ?? []).map { UInt16($0) })
+            return KeyboardLayout(id: id, name: name, table: table, deadKeys: dead)
+        }
+    }()
+    #endif
 }

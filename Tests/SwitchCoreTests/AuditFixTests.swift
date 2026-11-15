@@ -1,5 +1,7 @@
 import XCTest
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 @testable import SwitchCore
 
 final class AuditFixTests: XCTestCase {
@@ -104,6 +106,7 @@ final class AuditFixTests: XCTestCase {
         }
     }
 
+    #if canImport(CoreGraphics)
     func testReleaseMetadataComesFromThePreparedDownWithoutChangingPhysicalRelease() throws {
         let original = try XCTUnwrap(CGEventSource(stateID: .privateState))
         let replay = try XCTUnwrap(CGEventSource(stateID: .privateState))
@@ -122,4 +125,5 @@ final class AuditFixTests: XCTestCase {
         XCTAssertEqual(up.getIntegerValueField(.eventSourceUserData), 1234)
         XCTAssertEqual(up.flags, .maskShift); XCTAssertEqual(up.timestamp, 123_000_000); XCTAssertEqual(up.type, .keyUp)
     }
+    #endif
 }

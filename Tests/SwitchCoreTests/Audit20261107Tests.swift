@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import XCTest
 import CoreGraphics
 import SwitchCore
@@ -20,3 +21,4 @@ final class Audit20261107Tests: XCTestCase {
         XCTAssertEqual(up.getIntegerValueField(.eventSourceUserData), 1234)
     }
 }
+#endif

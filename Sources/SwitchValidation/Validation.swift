@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(CryptoKit)
 import CryptoKit
+#endif
 import SwitchCore
 
 public struct ValidationCorpus: Decodable {

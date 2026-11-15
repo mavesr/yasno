@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Ясно
+Name[en]=Yasno
+Comment=Исправляет слова, набранные не в той раскладке
+Comment[en]=Fixes words typed in the wrong keyboard layout
+Comment[uk]=Виправляє слова, набрані не в тій розкладці
+Exec=@EXEC@
+Icon=yasno
+Terminal=false
+Categories=Utility;
+Keywords=keyboard;layout;раскладка;клавиатура;punto;
+StartupNotify=false

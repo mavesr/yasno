@@ -19,6 +19,8 @@ pub static READY: AtomicBool = AtomicBool::new(false);
 static EDIT: AtomicIsize = AtomicIsize::new(0);
 static WINDOW: AtomicIsize = AtomicIsize::new(0);
 const WM_PREPARE: u32 = WM_APP + 40;
+const WM_STATE: u32 = WM_APP + 41;
+static STATE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 const US: &str = "00000409";
 const RU: &str = "00000419";
@@ -69,6 +71,12 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LP
             ActivateKeyboardLayout(lparam as HKL, 0);
             with_app(|a| { a.engine.caret_moved(); a.engine.typing.preferred = Some(a.engine.layouts().iter()
                 .find(|l| l.id.ends_with(&format!("{:04X}", 0x419))).map(|l| l.id.clone()).unwrap_or_default()); });
+            0
+        }
+        WM_STATE => {
+            let state = with_app(|a| format!("status={:?} monitoring={} corrections={} detail={:?}",
+                                             a.status(), a.monitoring(), a.corrections(), a.detail)).unwrap_or_default();
+            if let Ok(mut s) = STATE.lock() { *s = state; }
             0
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),
@@ -160,6 +168,10 @@ pub fn drive() -> (String, bool) {
             std::thread::sleep(Duration::from_millis(1500));
             let got = text();
             let pass = got == case.expected;
+            if !pass {
+                unsafe { SendMessageW(window, WM_STATE, 0, 0); }
+                report += &format!("     {}\n", STATE.lock().map(|s| s.clone()).unwrap_or_default());
+            }
             ok &= pass;
             report += &format!("{} {:<20} {:<8} {:?} -> {:?}{}\n", if pass { "PASS" } else { "FAIL" }, case.name, label,
                                case.keys, got, if pass { String::new() } else { format!(" (expected {:?})", case.expected) });

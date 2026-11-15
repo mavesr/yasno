@@ -212,6 +212,7 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
     schedule_update(hwnd);
     if show_window { window::show(); }
     if let Some(path) = self_test {
+        SELF_TEST.store(true, std::sync::atomic::Ordering::SeqCst);
         selftest::create_window();
         let target = hwnd as usize;
         std::thread::spawn(move || {
@@ -235,6 +236,7 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
 }
 
 static SELF_TEST_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static SELF_TEST: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn load_layouts() -> (Vec<usize>, Arc<Vec<KeyboardLayout>>) {
     let (hkls, layouts): (Vec<usize>, Vec<KeyboardLayout>) =
@@ -445,7 +447,14 @@ impl App {
             self.apply_state();
             return;
         };
-        if name == own_process() { return; }
+        if name == own_process() {
+            // Yasno's own windows are left alone, except the self-test field, which stands in for any app.
+            self.excluded = !SELF_TEST.load(std::sync::atomic::Ordering::SeqCst);
+            self.elevated = false;
+            self.last_app = None;
+            self.apply_state();
+            return;
+        }
         self.excluded = self.settings.exclusions.contains(&name);
         self.elevated = is_elevated(target.pid);
         self.last_app = Some(name);

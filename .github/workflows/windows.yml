@@ -6,10 +6,20 @@ on:
   pull_request:
     paths: ["windows/**", "Sources/SwitchCore/Resources/**", "Sources/SwitchValidation/Resources/**", ".github/workflows/windows.yml"]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish release win-v<version> from main (never marked Latest: the Mac updater reads releases/latest)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: windows
@@ -55,3 +65,14 @@ jobs:
         with:
           name: Yasno-windows-x64
           path: windows/release
+      - name: Publish release win-v<version> (not Latest)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          $tag = "win-v$version"
+          $notes = "Ясно для Windows 11 (x64), версия $version. Установка и что нового: windows/README.md. Скачайте yasno-$version-x64.exe и запустите."
+          gh release create $tag --repo ${{ github.repository }} --target ${{ github.sha }} --title "Ясно для Windows $version" --notes $notes --latest=false (Get-ChildItem release/*).FullName
+          gh release view $tag --repo ${{ github.repository }}

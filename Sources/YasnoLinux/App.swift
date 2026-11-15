@@ -108,6 +108,7 @@ public final class App {
         }
         if engine.layouts.count < 2 { return ("Добавьте вторую раскладку", "Ясно переключает раскладки, а в системе включена одна.") }
         if !settings.values.enabled { return ("Приостановлено", "Ясно ничего не меняет, пока вы его не включите.") }
+        if let report = devices?.report, report.grabbed.isEmpty, let problem = Self.keyboardProblem(report) { return problem }
         if !engine.detectorLoaded { return ("Загрузка словарей…", "") }
         if engine.secureInput { return ("Пауза: ввод пароля", "Во время ввода пароля Ясно не смотрит на клавиатуру.") }
         if settings.isExcluded(engine.currentAppID) {
@@ -117,8 +118,26 @@ public final class App {
         return ("Работает", "")
     }
 
+    /// Why no keyboard reaches Ясно although it may read keyboards: a key remapper is in the way.
+    static func keyboardProblem(_ report: InputDevices.Report) -> (String, String)? {
+        let remapper = report.remappers.first ?? "другая программа"
+        if report.selfCaptured || report.looped {
+            return ("Мешает \(remapper)",
+                    "\(remapper) перехватывает и клавиатуру Ясно. Добавьте в её запуск --ignore \"Yasno virtual keyboard\" и перезапустите её.")
+        }
+        guard !report.busy.isEmpty else { return nil }
+        let names = report.busy.joined(separator: ", ")
+        if !report.unreadable.isEmpty {
+            return ("Нужен доступ к клавиатуре", "Клавиатуру «\(names)» перехватывает \(remapper). Ясно будет читать то, что выдаёт \(remapper), когда вы дадите доступ.")
+        }
+        return ("Клавиатура занята", "Клавиатуру «\(names)» перехватывает другая программа, поэтому Ясно её не видит.")
+    }
+
     private var setupHint: (String, String) {
         if setupBusy { return ("Настройка доступа…", "") }
+        if let report = devices?.report, report.grabbed.isEmpty, !report.busy.isEmpty, !report.unreadable.isEmpty {
+            return ("Чтобы работать вместе с \(report.remappers.first ?? "программой, которая перехватывает клавиатуру"), Ясно нужен доступ к её клавиатуре. Система спросит пароль администратора один раз.", "Дать доступ")
+        }
         if !accessOK {
             if sink == nil, !FileManager.default.fileExists(atPath: "/dev/uinput") {
                 return ("В системе нет /dev/uinput. Ясно не сможет печатать исправления.", "")
@@ -196,6 +215,8 @@ public final class App {
                 refresh()
             }
         case Int(YL_ACTION_TOGGLE_PAUSE): toggle(0, !settings.values.enabled)
+        // The tray calls on the GTK main thread, where the window may be shown.
+        case Int(YL_ACTION_SHOW): yl_ui_show()
         default: break
         }
     }

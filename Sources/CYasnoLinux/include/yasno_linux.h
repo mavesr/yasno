@@ -10,6 +10,9 @@ int yl_open_input(const char *path);
 int yl_device_kind(int fd);
 int yl_device_name(int fd, char *buffer, int length);
 int yl_grab(int fd, int on);
+int yl_errno_busy(void);
+int yl_errno_access(void);
+int yl_uinput_event_path(int fd, char *buffer, int length);
 /* Count of events read, 0 when none is ready, -1 when the device is gone. */
 int yl_read_events(int fd, yl_event *out, int max);
 int yl_leds(int fd);

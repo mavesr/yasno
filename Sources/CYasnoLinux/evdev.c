@@ -9,12 +9,16 @@
 #include <stdio.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <dirent.h>
 
 #define BITS_PER_LONG (sizeof(long) * 8)
 #define NBITS(x) ((((x) - 1) / BITS_PER_LONG) + 1)
 #define TEST(bit, array) ((array[(bit) / BITS_PER_LONG] >> ((bit) % BITS_PER_LONG)) & 1)
 
-int yl_open_input(const char *path) { return open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC); }
+int yl_open_input(const char *path) {
+    int fd = open(path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
+    return fd >= 0 ? fd : -errno;
+}
 int yl_close(int fd) { return close(fd); }
 int yl_access_ok(const char *path, int write) { return access(path, write ? (R_OK | W_OK) : R_OK) == 0; }
 
@@ -43,7 +47,10 @@ int yl_device_kind(int fd) {
     return kind;
 }
 
-int yl_grab(int fd, int on) { return ioctl(fd, EVIOCGRAB, on ? 1 : 0); }
+/* 0, or -errno: -EBUSY when another program has the device. */
+int yl_grab(int fd, int on) { return ioctl(fd, EVIOCGRAB, on ? 1 : 0) == 0 ? 0 : -errno; }
+int yl_errno_busy(void) { return EBUSY; }
+int yl_errno_access(void) { return EACCES; }
 
 int yl_read_events(int fd, yl_event *out, int max) {
     struct input_event buffer[64];
@@ -100,6 +107,22 @@ int yl_uinput_create(const char *name) {
     snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "%s", name);
     if (ioctl(fd, UI_DEV_SETUP, &setup) < 0 || ioctl(fd, UI_DEV_CREATE) < 0) { close(fd); return -1; }
     return fd;
+}
+
+/* The /dev/input/eventN node of a device made through uinput, or "" if unknown. */
+int yl_uinput_event_path(int fd, char *buffer, int length) {
+    char sysname[64] = {0}, dir[160];
+    buffer[0] = 0;
+    if (ioctl(fd, UI_GET_SYSNAME(sizeof sysname), sysname) < 0) return -1;
+    snprintf(dir, sizeof dir, "/sys/devices/virtual/input/%s", sysname);
+    DIR *d = opendir(dir);
+    if (!d) return -1;
+    struct dirent *entry;
+    while ((entry = readdir(d))) {
+        if (!strncmp(entry->d_name, "event", 5)) { snprintf(buffer, length, "/dev/input/%s", entry->d_name); break; }
+    }
+    closedir(d);
+    return buffer[0] ? 0 : -1;
 }
 
 void yl_uinput_destroy(int fd) { if (fd >= 0) { ioctl(fd, UI_DEV_DESTROY); close(fd); } }

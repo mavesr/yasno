@@ -269,10 +269,12 @@ public final class X11Backend: LayoutBackend {
     public init() {}
     public static var available: Bool { yl_x11_open() != 0 && !rules().layouts.isEmpty }
 
-    static func rules() -> (layouts: [String], variants: [String]) {
+    /// _XKB_RULES_NAMES: rules, model, layout, variant, options.
+    public static func rawRules() -> [String] {
+        guard ProcessInfo.processInfo.environment["WAYLAND_DISPLAY"] == nil else { return [] }
         var buffer = [CChar](repeating: 0, count: 4096)
         let length = Int(yl_x11_rules(&buffer, Int32(buffer.count)))
-        guard length > 0 else { return ([], []) }
+        guard length > 0 else { return [] }
         var fields: [String] = []
         var current: [UInt8] = []
         for index in 0..<length {
@@ -280,6 +282,24 @@ public final class X11Backend: LayoutBackend {
             if byte == 0 { fields.append(String(decoding: current, as: UTF8.self)); current = [] } else { current.append(byte) }
         }
         if !current.isEmpty { fields.append(String(decoding: current, as: UTF8.self)) }
+        while fields.count < 5 { fields.append("") }
+        return fields
+    }
+
+    /// Xorg gives a newly added keyboard (Yasno's virtual one) the server's default layouts
+    /// and publishes those. Desktops such as Xfce or Cinnamon set theirs again; a bare window
+    /// manager configured with setxkbmap does not, so Yasno puts the user's set back.
+    @discardableResult public static func restore(_ saved: [String]) -> Bool {
+        guard saved.count >= 5, saved[2].contains(","), rawRules() != saved else { return false }
+        var command = ["setxkbmap", "-rules", saved[0], "-layout", saved[2], "-variant", saved[3], "-option", ""]
+        if !saved[1].isEmpty { command += ["-model", saved[1]] }
+        if !saved[4].isEmpty { command += ["-option", saved[4]] }
+        return Shell.run(command, timeout: 5) != nil
+    }
+
+    static func rules() -> (layouts: [String], variants: [String]) {
+        let fields = rawRules()
+        guard !fields.isEmpty else { return ([], []) }
         let layouts = fields.count > 2 ? fields[2].split(separator: ",", omittingEmptySubsequences: false).map(String.init) : []
         let variants = fields.count > 3 ? fields[3].split(separator: ",", omittingEmptySubsequences: false).map(String.init) : []
         return (layouts.filter { !$0.isEmpty }, variants)

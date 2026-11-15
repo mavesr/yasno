@@ -21,7 +21,10 @@ public final class App {
     private var setupMessage = ""
     private var extensionNote = ""
 
+    private let x11Rules: [String]
+
     public init() {
+        x11Rules = X11Backend.rawRules()
         let sink = UinputSink()
         self.sink = sink
         let target: KeySink = sink ?? NullSink()
@@ -46,6 +49,11 @@ public final class App {
         if Backends.isGnome, !Setup.gnomeExtensionInstalled { Setup.installGnomeExtension(resources: Setup.resources) }
         engine.loadDetector { [weak self] in self?.post() }
         engine.queue.async { [self] in
+            if !x11Rules.isEmpty {
+                // Xorg picks up the virtual keyboard within a moment and may reset the layouts.
+                usleep(700_000)
+                X11Backend.restore(x11Rules)
+            }
             engine.backend = Backends.detect()
             engine.reloadLayouts()
             engine.adoptCurrentCyrillic()

@@ -262,7 +262,8 @@ public final class App {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try? process.run()
-        DispatchQueue.main.async { self.quit() }
+        // GTK runs the main thread, not Dispatch: quit() only posts to GTK and is safe here.
+        quit()
     }
 
     // MARK: Run

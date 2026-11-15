@@ -1,0 +1,13 @@
+[package]
+name = "yasno-core"
+description = "Platform-independent layout detection for Yasno (port of the macOS SwitchCore)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+serde_json = "1"
+
+[dependencies]
+unicode-general-category = "1.1"
+serde_json = "1"

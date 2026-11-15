@@ -14,9 +14,11 @@ YASNO_MOUNTED=0
 cleanup() {
     local yasno_result=$?
     if [[ -n "${YASNO_NOTARY_PROFILE:-}" ]] && (( yasno_result != 0 )); then
+        # The stage below holds every DMG of this run, so none survives a failure.
         print -r -- "Нотарификация не завершена: локальная задача остановилась (код $yasno_result).
-Подписанный DMG сохранён. Сведения запроса: .build/distribution/pending-submission.json
-Для продолжения существующего запроса: ./scripts/resume-notarization.sh
+DMG не сохранён: при продолжении он собирается заново из подписанной копии приложения.
+Если приложение уже отправлено Apple (.build/distribution/pending-submission.json),
+дождаться этого запроса без новой отправки: ./scripts/resume-notarization.sh
 Журнал фоновой задачи: .build/distribution/notarization-background.log" > "$YASNO_ROOT/dist/Нотарификация.txt"
     fi
     if (( YASNO_MOUNTED )); then
@@ -87,7 +89,6 @@ PY
     fi
     print -r -- "Проверка Apple для Ясно $YASNO_VERSION выполняется.
 Запрос: $YASNO_APP_SUBMISSION_ID
-Подписанный DMG: Yasno-$YASNO_VERSION-arm64-signed.dmg
 После проверки появится Yasno-$YASNO_VERSION-arm64-notarized.dmg.
 Локальная задача ожидает ответ Apple; после перезагрузки её можно продолжить:
 ./scripts/resume-notarization.sh" > "$YASNO_ROOT/dist/Нотарификация.txt"
@@ -143,6 +144,8 @@ fi
 YASNO_DMG="$YASNO_ROOT/dist/${YASNO_DMG:t}"
 (cd "$YASNO_ROOT/dist" && shasum -a 256 "${YASNO_DMG:t}" > "${YASNO_DMG:t}.sha256")
 if [[ -n "${YASNO_NOTARY_PROFILE:-}" ]]; then
+    # Finished: a later resume must not rebuild and overwrite these files from the old request.
+    rm -f "$YASNO_WORK/pending-submission.json"
     print -r -- "Проверка Apple завершена успешно.
 Готов для передачи: ${YASNO_DMG:t}
 Приложение и DMG подписаны Developer ID, подтверждения Apple прикреплены.

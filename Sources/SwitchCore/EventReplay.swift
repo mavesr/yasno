@@ -12,7 +12,9 @@ public enum EventReplay {
         var count = 0
         var units = [UniChar](repeating: 0, count: 16)
         down.keyboardGetUnicodeString(maxStringLength: units.count, actualStringLength: &count, unicodeString: &units)
-        release.keyboardSetUnicodeString(stringLength: count, unicodeString: units)
+        // The documentation calls the count the length of the event's text, which may be longer
+        // than the buffer (text posted by another program). macOS 27 returns at most the buffer.
+        release.keyboardSetUnicodeString(stringLength: min(count, units.count), unicodeString: units)
     }
     public static func allowLocalInput(_ source: CGEventSource) {
         source.localEventsSuppressionInterval = 0

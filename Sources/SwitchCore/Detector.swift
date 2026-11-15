@@ -371,8 +371,12 @@ public final class Detector {
            SystemLexicon.shared.knows(baseWord, languages: validLanguages) { return nil }
         // Between RU and UK the same keys spell both languages: a name or form missing
         // from the list (Анатолій) stays when the sentence so far is in the source language.
+        // Not a word that is one of the most common in the other language: on the Apple
+        // Ukrainian layout Russian typed by habit spells real Ukrainian words (установи →
+        // установі, версию → версію), so the context looks Ukrainian, yet єтот is этот.
         if !manual, sourceRank == nil, Self.isCyrillic(source),
            candidates.contains(where: { Self.isCyrillic($0.target) }),
+           !candidates.contains(where: { Self.isCyrillic($0.target) && $0.score >= Self.everydayWordScore }),
            contextPreference(context, targets: [source] + candidates.map(\.target)) == source.id {
             candidates.removeAll { Self.isCyrillic($0.target) }
         }
@@ -422,6 +426,9 @@ public final class Detector {
         }) { return nil }
         return best
     }
+
+    /// The score of a dictionary word ranked within the 1,000 most common.
+    static let everydayWordScore = log10(50_001.0 / 1_000.0)
 
     static func isCyrillic(_ layout: KeyboardLayout) -> Bool {
         layout.languages.contains { $0 == .russian || $0 == .ukrainian }

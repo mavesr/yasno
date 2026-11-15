@@ -28,7 +28,9 @@ if [[ "$(codesign -dv --verbose=4 "$YASNO_APP" 2>&1)" != *'Authority=Developer I
     print -u2 'The archive is not signed with Developer ID.'
     exit 1
 fi
-codesign --verify --requirement '=notarized' "$YASNO_APP"
+# --test-requirement, not --requirement: that one names requirements to embed when signing
+# and is ignored here, so an ad-hoc signed copy passed it.
+codesign --verify --test-requirement='=notarized' "$YASNO_APP"
 xcrun stapler validate "$YASNO_APP"
 if [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$YASNO_APP/Contents/Info.plist")" != "$YASNO_VERSION" ]]; then
     print -u2 "The archive does not contain version $YASNO_VERSION."

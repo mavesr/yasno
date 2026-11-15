@@ -69,6 +69,25 @@ final class ReplacementTransactionTests: XCTestCase {
         }
     }
 
+    /// A Shift undo also runs after the arrows moved the caret back into the word. The caret
+    /// stays where the user put it (at most at the end of the new text) instead of moving by the
+    /// change in length, which put it before the word or at -1 at the start of the field.
+    func testCaretInsideTheReplacedWordStaysWhereItWas() {
+        let cases: [(String, String, Int, Int)] = [
+            ("пожалуйста", "пожалуста", 0, 0), ("пожалуйста", "пожалуста", 4, 4), ("пожалуйста", "пожалуста", 9, 9),
+            ("пожалуйста", "пожалуста", 10, 9), ("пожалуста", "пожалуйста", 0, 0), ("пожалуста", "пожалуйста", 4, 4),
+            ("пожалуста", "пожалуйста", 9, 10),
+        ]
+        for (original, replacement, caret, expected) in cases {
+            let editor = Editor(original + " мир", caret: CFRange(location: caret, length: 0))
+            XCTAssertEqual(editor.run(original, replacement: replacement, range: CFRange(location: 0, length: original.utf16.count)),
+                           .success)
+            XCTAssertEqual(editor.value, replacement + " мир")
+            XCTAssertEqual(editor.selection.location, expected, "\(original) → \(replacement), caret \(caret)")
+            XCTAssertEqual(editor.selection.length, 0)
+        }
+    }
+
     func testStaleFocusTextSelectionAndRevisionNeverInsert() {
         for failure in 0..<6 {
             let editor = Editor("ghbdtn ", caret: CFRange(location: 7, length: 0))

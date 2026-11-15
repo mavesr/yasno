@@ -9,3 +9,4 @@ schaltfläche
 cursor
 entwickler
 -nen
+-tot

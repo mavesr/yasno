@@ -1,3 +1,4 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
 
 public enum EventReplay {
@@ -31,3 +32,4 @@ public enum EventReplay {
         event.flags = flags; event.timestamp = timestamp; event.type = type
     }
 }
+#endif

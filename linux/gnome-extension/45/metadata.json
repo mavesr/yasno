@@ -1,0 +1,8 @@
+{
+  "uuid": "yasno@mavesr.github.io",
+  "name": "Ясно",
+  "description": "Lets the Yasno keyboard layout switcher read and select input sources.",
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "url": "https://github.com/mavesr/yasno",
+  "version": 1
+}

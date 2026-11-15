@@ -1,5 +1,7 @@
 import XCTest
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 @testable import SwitchCore
 
 final class AuditRegressionTests: XCTestCase {
@@ -124,6 +126,7 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertEqual(detector.suggest("бил", source: uk, layouts: [abc, ru, uk])?.replacement, "был")
     }
 
+    #if canImport(CoreGraphics)
     func testReplaySourceChangesTagWithoutChangingKeyOrModifiers() throws {
         let originalSource = try XCTUnwrap(CGEventSource(stateID: .privateState))
         originalSource.userData = 0x5941534e4f54
@@ -140,7 +143,9 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertEqual(copy.type, .keyDown)
         XCTAssertEqual(original.getIntegerValueField(.eventSourceUserData), 0x5941534e4f54)
     }
+    #endif
 
+    #if canImport(CoreGraphics)
     func testReplayedShiftKeepsPhysicalHoldDuration() throws {
         let source = try XCTUnwrap(CGEventSource(stateID: .privateState))
         let down = try XCTUnwrap(CGEvent(keyboardEventSource: source, virtualKey: 56, keyDown: true))
@@ -156,7 +161,9 @@ final class AuditRegressionTests: XCTestCase {
         XCTAssertEqual(down.type, .flagsChanged)
         XCTAssertEqual(up.type, .flagsChanged)
     }
+    #endif
 
+    #if canImport(CoreGraphics)
     func testSyntheticSourcesExplicitlyPermitHardwareInput() throws {
         let source = try XCTUnwrap(CGEventSource(stateID: .privateState))
         EventReplay.allowLocalInput(source)
@@ -168,4 +175,5 @@ final class AuditRegressionTests: XCTestCase {
             XCTAssertTrue(filter.contains(.permitSystemDefinedEvents))
         }
     }
+    #endif
 }

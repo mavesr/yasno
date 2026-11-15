@@ -461,6 +461,9 @@ public final class Engine {
         let app = activeApp?.id ?? ""
         let excluded = settings.isExcluded(app)
         let enabled = allowed && settings.values.enabled && !secureInput && !excluded && layouts.count >= 2 && !hub.isFaulted
+        if monitor.enabled != enabled {
+            trace("monitoring \(enabled): allowed \(allowed) enabled \(settings.values.enabled) secure \(secureInput) app \(app.debugDescription) excluded \(excluded) layouts \(layouts.count) faulted \(hub.isFaulted)")
+        }
         monitor.enabled = enabled
         hub.lock.lock(); hub.accepting = enabled; hub.lock.unlock()
     }

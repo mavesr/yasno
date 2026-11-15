@@ -91,6 +91,7 @@ X-GNOME-Autostart-enabled=true
 NoDisplay=true
 ENTRY
 
+cd "$HOME"
 if command -v setsid >/dev/null 2>&1; then setsid "$APP/yasno" >/dev/null 2>&1 < /dev/null &
 else nohup "$APP/yasno" >/dev/null 2>&1 < /dev/null & fi
 say "Ясно $("$APP/yasno" --version) установлено в $APP и запущено."

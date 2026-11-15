@@ -98,6 +98,7 @@ enum Shell {
         let pipe = Pipe()
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
+        process.currentDirectoryURL = URL(fileURLWithPath: "/")
         do { try process.run() } catch { return nil }
         let deadline = Date().addingTimeInterval(timeout)
         var output = Data()
@@ -106,6 +107,8 @@ enum Shell {
         reader.async { output = pipe.fileHandleForReading.readDataToEndOfFile(); done.signal() }
         if done.wait(timeout: .now() + timeout) == .timedOut { process.terminate(); return nil }
         while process.isRunning && Date() < deadline { usleep(1000) }
+        // terminationStatus of a process still running is a fatal error in Foundation.
+        guard !process.isRunning else { process.terminate(); return nil }
         guard process.terminationStatus == 0 else { return nil }
         return String(data: output, encoding: .utf8)
     }

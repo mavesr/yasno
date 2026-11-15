@@ -258,6 +258,7 @@ public final class App {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
         process.arguments = ["-c", script, binary]
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice

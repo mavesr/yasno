@@ -85,7 +85,9 @@ public final class InputDevices {
         lock.lock(); let want = wantGrab && !stopped; lock.unlock()
         for (path, var device) in devices where device.kind & Int32(YL_KIND_KEYBOARD) != 0 {
             if want && !device.grabbed {
-                guard yl_keys_down(device.fd) == 0, yl_grab(device.fd, 1) == 0 else { continue }
+                guard yl_keys_down(device.fd) == 0 else { continue }
+                guard yl_grab(device.fd, 1) == 0 else { trace("grab failed: \(device.name)"); continue }
+                trace("grabbed: \(device.name)")
                 device.grabbed = true
             } else if !want && device.grabbed {
                 // Keys the desktop has down from the virtual keyboard are released there first.
@@ -93,6 +95,7 @@ public final class InputDevices {
                 for key in hub.heldKeys { sink.key(key, 0) }
                 sink.sync()
                 _ = yl_grab(device.fd, 0)
+                trace("released: \(device.name)")
                 device.grabbed = false
             }
             devices[path] = device

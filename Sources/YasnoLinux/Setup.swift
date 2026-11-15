@@ -23,6 +23,8 @@ public enum Setup {
     public static func installPermissions() -> Int32 {
         guard getuid() == 0 else { fputs("Run as root: sudo yasno --setup-permissions\n", stderr); return 1 }
         do {
+            try FileManager.default.createDirectory(atPath: "/etc/udev/rules.d", withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(atPath: "/etc/modules-load.d", withIntermediateDirectories: true)
             try rules.write(toFile: rulesPath, atomically: true, encoding: .utf8)
             try "uinput\n".write(toFile: modulesPath, atomically: true, encoding: .utf8)
         } catch { fputs("Cannot write the udev rule: \(error)\n", stderr); return 2 }

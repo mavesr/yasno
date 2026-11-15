@@ -71,8 +71,9 @@ sed "s|@EXEC@|$APP/yasno|" "$APP/io.github.mavesr.Yasno.desktop" > "$DATA/applic
 command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q "$DATA/applications" 2>/dev/null || true
 command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -q -t "$DATA/icons/hicolor" 2>/dev/null || true
 
-# 3. Keyboard access, once per computer.
-if ! "$APP/yasno" --check-access; then
+# 3. Keyboard access, once per computer. The rule also covers keyboards that key remappers
+# (xremap, keyd) make, which the desktop alone does not give to the user.
+if [ ! -f /etc/udev/rules.d/70-yasno.rules ] || ! "$APP/yasno" --check-access; then
     say "Ясно нужен доступ к клавиатуре. Система спросит пароль администратора."
     as_root "$APP/yasno" --setup-permissions || say "Доступ не настроен. Его можно дать позже кнопкой в окне Ясно."
     i=0; while [ $i -lt 20 ] && ! "$APP/yasno" --check-access; do sleep 0.25; i=$((i + 1)); done

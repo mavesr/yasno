@@ -451,7 +451,6 @@ impl App {
             // Yasno's own windows are left alone, except the self-test field, which stands in for any app.
             self.excluded = !SELF_TEST.load(std::sync::atomic::Ordering::SeqCst);
             self.elevated = false;
-            self.last_app = None;
             self.apply_state();
             return;
         }

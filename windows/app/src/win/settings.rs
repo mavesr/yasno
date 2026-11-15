@@ -21,6 +21,11 @@ pub struct Settings {
     pub correct_spelling: bool,
     pub exclusions: Vec<String>,
     pub ignored_words: Vec<String>,
+    pub automatic_updates: bool,
+    /// Unix seconds of the last update check.
+    pub last_update_check: Option<i64>,
+    /// The Cyrillic layout chosen last (RU/UK ties).
+    pub preferred: Option<String>,
 }
 
 fn wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(Some(0)).collect() }
@@ -68,12 +73,16 @@ fn list(s: Option<String>) -> Option<Vec<String>> {
 impl Settings {
     pub fn load() -> Settings {
         let mut s = Settings { paused: false, correct_spelling: true,
-                               exclusions: DEFAULT_EXCLUSIONS.iter().map(|s| s.to_string()).collect(), ignored_words: Vec::new() };
+                               exclusions: DEFAULT_EXCLUSIONS.iter().map(|s| s.to_string()).collect(), ignored_words: Vec::new(),
+                               automatic_updates: true, last_update_check: None, preferred: None };
         if let Some(key) = open(KEY) {
             if let Some(v) = get_dword(key, "Paused") { s.paused = v != 0; }
             if let Some(v) = get_dword(key, "CorrectSpelling") { s.correct_spelling = v != 0; }
             if let Some(v) = list(get_string(key, "Exclusions")) { s.exclusions = v; }
             if let Some(v) = list(get_string(key, "IgnoredWords")) { s.ignored_words = v; }
+            if let Some(v) = get_dword(key, "AutomaticUpdates") { s.automatic_updates = v != 0; }
+            s.last_update_check = get_string(key, "LastUpdateCheck").and_then(|v| v.parse().ok());
+            s.preferred = get_string(key, "PreferredLayout").filter(|v| !v.is_empty());
             unsafe { RegCloseKey(key); }
         }
         s
@@ -85,6 +94,9 @@ impl Settings {
             set_dword(key, "CorrectSpelling", self.correct_spelling as u32);
             set_string(key, "Exclusions", &self.exclusions.join(";"));
             set_string(key, "IgnoredWords", &self.ignored_words.join(";"));
+            set_dword(key, "AutomaticUpdates", self.automatic_updates as u32);
+            set_string(key, "LastUpdateCheck", &self.last_update_check.map(|v| v.to_string()).unwrap_or_default());
+            set_string(key, "PreferredLayout", self.preferred.as_deref().unwrap_or(""));
             unsafe { RegCloseKey(key); }
         }
     }
@@ -97,9 +109,16 @@ pub fn autostart() -> bool {
 pub fn set_autostart(enabled: bool) {
     let Some(key) = open(RUN) else { return };
     if enabled {
-        if let Ok(exe) = std::env::current_exe() { set_string(key, RUN_VALUE, &format!("\"{}\"", exe.display())); }
+        if let Ok(exe) = std::env::current_exe() { set_string(key, RUN_VALUE, &format!("\"{}\" --background", exe.display())); }
     } else {
         unsafe { RegDeleteValueW(key, wide(RUN_VALUE).as_ptr()); }
     }
+    unsafe { RegCloseKey(key); }
+}
+
+/// Start this executable at sign-in (the installed copy, not the one being run).
+pub fn set_autostart_for(exe: &std::path::Path) {
+    let Some(key) = open(RUN) else { return };
+    set_string(key, RUN_VALUE, &format!("\"{}\" --background", exe.display()));
     unsafe { RegCloseKey(key); }
 }

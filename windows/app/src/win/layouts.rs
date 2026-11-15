@@ -56,3 +56,44 @@ fn read(hkl: HKL) -> Option<KeyboardLayout> {
     let name = languages.iter().map(|l| l.code()).collect::<Vec<_>>().join("+");
     Some(KeyboardLayout::new(id(hkl), name, languages, entries))
 }
+
+/// The window that takes the keys: the foreground window's thread, or for a Store app its
+/// core window, which runs on another thread than the frame around it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Target { pub window: usize, pub thread: u32, pub pid: u32 }
+
+pub fn foreground() -> Option<Target> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{FindWindowExW, GetClassNameW, GetForegroundWindow, GetWindowThreadProcessId};
+    unsafe {
+        let mut window = GetForegroundWindow();
+        if window.is_null() { return None; }
+        let mut class = [0u16; 64];
+        let n = GetClassNameW(window, class.as_mut_ptr(), class.len() as i32);
+        if String::from_utf16_lossy(&class[..n.max(0) as usize]) == "ApplicationFrameWindow" {
+            let core: Vec<u16> = "Windows.UI.Core.CoreWindow".encode_utf16().chain(Some(0)).collect();
+            let inner = FindWindowExW(window, std::ptr::null_mut(), core.as_ptr(), std::ptr::null());
+            if !inner.is_null() { window = inner; }
+        }
+        let mut pid = 0u32;
+        let thread = GetWindowThreadProcessId(window, &mut pid);
+        (thread != 0).then_some(Target { window: window as usize, thread, pid })
+    }
+}
+
+/// The layout the target window types in now.
+pub fn current(target: Target) -> HKL {
+    unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout(target.thread) }
+}
+
+/// Ask the focused window to select a layout, as Windows does for the language hotkey:
+/// the request goes to the window with the keyboard focus.
+pub fn select(target: Target, hkl: HKL) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetGUIThreadInfo, PostMessageW, GUITHREADINFO, WM_INPUTLANGCHANGEREQUEST};
+    unsafe {
+        let mut info: GUITHREADINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+        let focus = if GetGUIThreadInfo(target.thread, &mut info) != 0 && !info.hwndFocus.is_null() { info.hwndFocus }
+                    else { target.window as _ };
+        PostMessageW(focus, WM_INPUTLANGCHANGEREQUEST, 0, hkl as isize);
+    }
+}

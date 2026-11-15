@@ -287,3 +287,66 @@ fn keystroke_edit() {
     assert_eq!(KeystrokeEdit::new("", "x", ""), None);
     assert_eq!(KeystrokeEdit::new("x", "", ""), None);
 }
+
+fn decide_with(f: &Fx, text: &str, source: &KeyboardLayout, layouts: &[&KeyboardLayout], typing: bool, paused: bool,
+               preferred: Option<&str>) -> Option<String> {
+    let r = CorrectionRequest::new(text, source, layouts, &none(), preferred, true, typing, false, paused);
+    if !f.d.may_correct(&r) { return None; }
+    f.d.correction(&r, "").map(|s| s.replacement)
+}
+
+/// Mac 0.2.24: German "tot" ranked as common, so tot on Latin never became «еще», and «еще»
+/// typed on the Ukrainian layout turned back into tot.
+#[test]
+fn tot_converts_to_russian_and_does_not_come_back() {
+    let f = fx();
+    let all = [&f.abc, &f.ru, &f.uk];
+    let ru = Some(f.ru.id.as_str());
+    assert_eq!(decide(&f, "tot", &f.abc, &all, false, ru).as_deref(), Some("еще"));
+    assert_eq!(decide(&f, "Tot", &f.abc, &all, false, ru).as_deref(), Some("Еще"));
+    let r = CorrectionRequest::new("tot", &f.abc, &all, &none(), ru, true, false, false, false);
+    assert_eq!(f.d.correction(&r, "я хочу ").map(|s| s.replacement).as_deref(), Some("еще"));
+    for source in [&f.ru, &f.uk] {
+        for word in ["еще", "Еще", "ещё"] {
+            assert_eq!(decide_with(&f, word, source, &all, false, false, ru), None, "{word} on {}", source.name);
+            assert_eq!(decide_with(&f, word, source, &all, true, false, ru), None, "{word} on {} while typing", source.name);
+            assert_eq!(decide_with(&f, word, source, &all, true, true, ru), None, "{word} on {} after a pause", source.name);
+        }
+    }
+}
+
+/// Mac 0.2.25: Russian typed by habit on the Ukrainian layout spells real Ukrainian words, so
+/// the sentence looked Ukrainian and «єтот» stayed instead of becoming «этот».
+#[test]
+fn common_russian_word_on_ukrainian_layout_switches_despite_ukrainian_looking_context() {
+    let f = fx();
+    let all = [&f.abc, &f.ru, &f.uk];
+    let ru = Some(f.ru.id.as_str());
+    let typed = f.ru.convert("установи свежую версию и на мы ", &f.uk).unwrap();
+    for context in ["".to_string(), typed.clone(), "і на ".to_string()] {
+        let r = CorrectionRequest::new("єтот", &f.uk, &all, &none(), ru, true, false, false, false);
+        assert!(f.d.may_correct(&r));
+        assert_eq!(f.d.correction(&r, &context).map(|s| s.replacement).as_deref(), Some("этот"), "{context}");
+        let r = CorrectionRequest::new("Єтот", &f.uk, &all, &none(), ru, true, false, false, false);
+        assert_eq!(f.d.correction(&r, &context).map(|s| s.replacement).as_deref(), Some("Этот"), "{context}");
+    }
+    for word in ["версію", "на", "мак"] {
+        let r = CorrectionRequest::new(word, &f.uk, &all, &none(), ru, true, false, false, false);
+        assert_eq!(f.d.correction(&r, "установі свежую ").map(|s| s.replacement), None, "{word}");
+    }
+}
+
+/// On Windows the Russian and Ukrainian comma and period are the keys of ? and / on the
+/// Latin layout: a word converted with them gets the comma, not a question mark.
+#[test]
+fn windows_comma_key_after_a_converted_word() {
+    let f = fx();
+    let all = [&f.abc, &f.ru, &f.uk];
+    let ru = Some(f.ru.id.as_str());
+    assert_eq!(decide(&f, "ghbdtn?", &f.abc, &all, false, ru).as_deref(), Some("привет,"));
+    assert_eq!(decide(&f, "Ghbdtn?", &f.abc, &all, false, ru).as_deref(), Some("Привет,"));
+    assert_eq!(decide(&f, "lzre.?", &f.abc, &all, false, ru).as_deref(), Some("дякую,"));
+    // A real English question stays.
+    assert_eq!(decide(&f, "what?", &f.abc, &all, false, ru), None);
+    assert_eq!(decide(&f, "really?", &f.abc, &all, false, ru), None);
+}

@@ -2,9 +2,9 @@ name: Windows
 
 on:
   push:
-    paths: ["windows/**", "Sources/SwitchCore/Resources/**", ".github/workflows/windows.yml"]
+    paths: ["windows/**", "Sources/SwitchCore/Resources/**", "Sources/SwitchValidation/Resources/**", ".github/workflows/windows.yml"]
   pull_request:
-    paths: ["windows/**", "Sources/SwitchCore/Resources/**", ".github/workflows/windows.yml"]
+    paths: ["windows/**", "Sources/SwitchCore/Resources/**", "Sources/SwitchValidation/Resources/**", ".github/workflows/windows.yml"]
   workflow_dispatch:
 
 jobs:
@@ -20,21 +20,38 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: windows
-      - name: Test
+      - name: Clippy
+        run: cargo clippy --release --workspace --all-targets -- -D warnings -A clippy::style -A clippy::complexity
+      - name: Test (detector, engine simulation, Mac corpus, Windows layout tables)
         run: cargo test --release --workspace
       - name: Build x64
         run: cargo build --release -p yasno --target x86_64-pc-windows-msvc
+      - name: Self-test on this Windows desktop (hook, SendInput, layouts, edit control)
+        shell: pwsh
+        run: |
+          $exe = "target/x86_64-pc-windows-msvc/release/yasno.exe"
+          $p = Start-Process -FilePath $exe -ArgumentList "--self-test", "$PWD/self-test.txt" -PassThru
+          if (-not $p.WaitForExit(300000)) { $p.Kill(); Write-Error "self-test timed out" }
+          if (Test-Path self-test.txt) { Get-Content self-test.txt } else { Write-Error "no report" }
+          if ($p.ExitCode -ne 0) { Write-Error "self-test failed ($($p.ExitCode))" }
       - name: Package
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          New-Item -ItemType Directory -Force dist, release | Out-Null
           Copy-Item target/x86_64-pc-windows-msvc/release/yasno.exe dist/Yasno.exe
           Copy-Item ../Sources/SwitchCore/Resources/ATTRIBUTION.md dist/
           Copy-Item ../Sources/SwitchCore/Resources/LICENSE_ru_RU.txt dist/
           Copy-Item ../Sources/SwitchCore/Resources/LICENSE_uk_UA.txt dist/
           Copy-Item ../Sources/SwitchCore/Resources/MPL-1.1.txt dist/
           Copy-Item README.md dist/README.md
+          $name = "yasno-$version-x64.exe"
+          Copy-Item target/x86_64-pc-windows-msvc/release/yasno.exe "release/$name"
+          $hash = (Get-FileHash "release/$name" -Algorithm SHA256).Hash.ToLower()
+          Set-Content -NoNewline -Path "release/$name.sha256" -Value "$hash  $name"
+          Compress-Archive -Path dist/* -DestinationPath "release/Yasno-windows-$version-x64.zip"
+          Get-ChildItem release
       - uses: actions/upload-artifact@v4
         with:
           name: Yasno-windows-x64
-          path: windows/dist
+          path: windows/release

@@ -11,6 +11,9 @@ use crate::lexicon::{Lexicon, NoLexicon};
 use crate::web_address;
 use crate::word_text::{self, canonical, core_and_suffix, is_apostrophe};
 
+/// The score of a dictionary word ranked within the 1,000 most common.
+fn everyday_word_score() -> f64 { (50_001.0f64 / 1_000.0).log10() }
+
 #[derive(Clone, Debug)]
 pub struct Suggestion<'a> {
     pub original: String,
@@ -364,8 +367,13 @@ impl Detector {
             // literal punctuation typed in the source stays literal.
             let (converted_core, converted_suffix) = core_and_suffix(&converted);
             let suffix_count = count(converted_suffix);
-            let typed_symbols = !converted_suffix.is_empty()
-                && !chars::suffix(word, suffix_count).chars().any(word_text::is_suffix_punctuation);
+            // Windows only: the Russian and Ukrainian comma and period are the keys of ? and /
+            // on the Latin layout (the Apple layouts put them elsewhere). «lzre.?» is «дякую,».
+            let windows_comma = !source.is_cyrillic() && target.is_cyrillic() && !converted_suffix.is_empty()
+                && chars::suffix(word, suffix_count).chars().zip(converted_suffix.chars())
+                    .all(|pair| matches!(pair, ('?', ',') | ('/', '.')));
+            let typed_symbols = windows_comma || (!converted_suffix.is_empty()
+                && !chars::suffix(word, suffix_count).chars().any(word_text::is_suffix_punctuation));
             let dictionary_rank = self.rank(&converted, &target.languages).or_else(|| {
                 if typed_symbols && !converted_core.is_empty() { self.rank(converted_core, &target.languages) } else { None }
             });
@@ -404,8 +412,12 @@ impl Detector {
         if !manual && !candidates.is_empty() && source_rank.is_none() && base_count >= 4
             && self.lexicon.knows_any(base_word, valid_languages) { return None; }
         // Between RU and UK the same keys spell both languages: a name or form missing from
-        // the list stays when the sentence so far is in the source language.
-        if !manual && source_rank.is_none() && source.is_cyrillic() && candidates.iter().any(|c| c.target.is_cyrillic()) {
+        // the list stays when the sentence so far is in the source language. Not a word that
+        // is one of the most common in the other language: Russian typed by habit on the
+        // Ukrainian layout spells real Ukrainian words (установи → установі, версию → версію),
+        // so the context looks Ukrainian, yet єтот is этот.
+        if !manual && source_rank.is_none() && source.is_cyrillic() && candidates.iter().any(|c| c.target.is_cyrillic())
+            && !candidates.iter().any(|c| c.target.is_cyrillic() && c.score >= everyday_word_score()) {
             let mut targets: Vec<&KeyboardLayout> = vec![source];
             targets.extend(candidates.iter().map(|c| c.target));
             if self.context_preference(q.context, &targets).as_deref() == Some(source.id.as_str()) {

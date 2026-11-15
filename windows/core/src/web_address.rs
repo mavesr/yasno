@@ -41,6 +41,17 @@ pub fn recognizes(text: &str) -> bool {
 pub fn converted(text: &str, source: &KeyboardLayout, target: &KeyboardLayout) -> Option<String> {
     if !source.is_cyrillic() || !target.languages.iter().any(|l| !l.is_cyrillic())
         || !text.chars().any(|c| (0x400..=0x4ff).contains(&(c as u32))) { return None; }
+    // Sentence punctuation typed after the address stays as typed: on the Windows Russian
+    // layout the comma is the key of ?, which an address would take as a query.
+    let core = text.trim_end_matches([',', '!', '…', ';', ':', '.', '?']);
+    if core.len() < text.len() && !core.is_empty() {
+        let tail = &text[core.len()..];
+        for preserve in [false, true] {
+            if let Some(output) = source.convert_with(core, target, preserve) {
+                if recognizes(&output) { return Some(output + tail); }
+            }
+        }
+    }
     // Both physical punctuation (ю → .) and deliberately typed literal dots occur.
     for preserve in [false, true] {
         if let Some(output) = source.convert_with(text, target, preserve) {

@@ -5,6 +5,7 @@
 
 pub mod chars;
 pub mod detector;
+pub mod engine;
 pub mod geometry;
 pub mod keystroke_edit;
 pub mod language;
@@ -17,6 +18,7 @@ pub mod shift_tap;
 pub mod spelling;
 pub mod text_safety;
 pub mod typing;
+pub mod update;
 pub mod web_address;
 pub mod word_boundary;
 pub mod word_text;

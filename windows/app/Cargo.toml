@@ -13,7 +13,8 @@ path = "src/main.rs"
 yasno-core = { path = "../core" }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_Globalization", "Win32_System_Ole"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_Globalization", "Win32_System_Ole", "Win32_UI_Shell"] }
+sha2 = "0.10"
 
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
@@ -21,6 +22,11 @@ features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Gdi",
+    "Win32_Networking_WinHttp",
+    "Win32_System_SystemInformation",
+    "Win32_System_Time",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
     "Win32_Security",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",

@@ -91,6 +91,8 @@ impl Typing {
     pub fn new() -> Self { Self::default() }
 
     pub fn word(&self) -> &str { &self.text }
+    /// A word is being typed: no Space after it yet.
+    pub fn in_word(&self) -> bool { !self.text.is_empty() && self.suffix.is_empty() }
     pub fn version(&self) -> u64 { self.version }
 
     /// Forget everything: the caret may be anywhere now.
@@ -128,8 +130,11 @@ impl Typing {
             Key::Char(stroke) => {
                 let Some(c) = layout.character(stroke.key, stroke.shift, stroke.caps_lock) else { self.reset(); return None };
                 if layout.is_dead_key(stroke.key, stroke.shift, stroke.caps_lock) { self.reset(); return None; }
+                // The user selected another layout in the middle of the word, as the Mac
+                // monitor's syncSource: the word is a mix of two layouts and is dropped.
+                if !self.text.is_empty() && self.suffix.is_empty() && self.layout_id != layout.id { self.reset(); }
                 if !self.suffix.is_empty() { self.commit_word(); }
-                if self.text.is_empty() || self.layout_id != layout.id { self.layout_id = layout.id.clone(); }
+                if self.text.is_empty() { self.layout_id = layout.id.clone(); }
                 self.undo = None;
                 self.manual = None;
                 self.strokes.push(stroke);

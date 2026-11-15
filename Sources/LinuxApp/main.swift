@@ -7,6 +7,7 @@ import YasnoLinux
 // yasno --setup-permissions   as root (pkexec): keyboard access for the users at the seat
 // yasno --remove-permissions  as root: take that access away again
 // yasno --diagnose            print what Yasno sees on this desktop
+// yasno --check-access        exit status 0 when the keyboards and /dev/uinput can be used
 let arguments = CommandLine.arguments
 if arguments.contains("--version") {
     print(YasnoVersion.current)
@@ -15,5 +16,6 @@ if arguments.contains("--version") {
 if arguments.contains("--setup-permissions") { exit(Setup.installPermissions()) }
 if arguments.contains("--remove-permissions") { exit(Setup.removePermissions()) }
 if arguments.contains("--diagnose") { exit(Diagnose.run()) }
+if arguments.contains("--check-access") { exit(InputDevices.accessible ? 0 : 1) }
 setvbuf(stdout, nil, _IOLBF, 0)
 exit(App.run(arguments: arguments.filter { $0 == "--background" || $0 == arguments[0] }))

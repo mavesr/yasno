@@ -25,6 +25,9 @@ public final class WordMonitor {
     var enabled = false { didSet { if oldValue && !enabled { reset() } } }
     var currentSourceID: () -> String = { "" }
     var currentApp: () -> String = { "" }
+    /// A key starts a word: the engine looks up the application now (it may be one that is
+    /// excluded, or the user just left one), so the first letter is judged in the right place.
+    var onWordStart: (() -> Void)?
     var secureInput: () -> Bool = { false }
 
     private(set) var token = ""
@@ -88,6 +91,7 @@ public final class WordMonitor {
             if event.value == 0 { held.remove(code) } else { held.insert(code) }
         }
         if event.value == 0 && !KeyCodes.modifiers.contains(code) { return }
+        if token.isEmpty, event.value == 1, !KeyCodes.modifiers.contains(code) { onWordStart?() }
         guard enabled, !secureInput() else { reset(); return }
         if code == KeyCodes.leftShift || code == KeyCodes.rightShift {
             guard event.value != 2 else { return }

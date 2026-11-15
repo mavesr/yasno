@@ -182,6 +182,22 @@ final class TypingTests: XCTestCase {
         XCTAssertEqual(rig.desktop.field, "ghbdtn ")
     }
 
+    /// Leaving an excluded application and typing at once: the first word is already judged in
+    /// the new application, before the periodic refresh has noticed the switch.
+    func testWordRightAfterLeavingExcludedApplication() {
+        let rig = TypingRig()
+        var random = SystemRandomNumberGenerator()
+        rig.desktop.app = "org.gnome.Terminal.desktop"
+        rig.engine.queue.sync { rig.engine.refreshApp(); rig.engine.apply(allowed: true) }
+        rig.type("ghbdtn ", meaning: rig.layout("xkb:us"), random: &random)
+        rig.settle()
+        rig.desktop.clear()
+        rig.desktop.app = "org.gnome.TextEditor.desktop"
+        rig.type("ghbdtn vbh ", meaning: rig.layout("xkb:us"), random: &random)
+        rig.settle()
+        XCTAssertEqual(rig.desktop.field, "привет мир ")
+    }
+
     func testPausedEngineForwardsEverything() {
         let rig = TypingRig()
         var random = SystemRandomNumberGenerator()

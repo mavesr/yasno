@@ -62,6 +62,7 @@ public final class Engine {
     private(set) var activeApp: (id: String, name: String)?
     public var monitoringAllowed: () -> Bool = { true }
     public var secureInput = false
+    private var allowed = false
 
     public init(hub: InputHub, typist: Typist, settings: Settings, backend: LayoutBackend?,
                 queue: DispatchQueue = DispatchQueue(label: "yasno.engine", qos: .userInteractive)) {
@@ -72,7 +73,12 @@ public final class Engine {
         monitor.onManual = { [weak self] in self?.manual(after: $0) }
         monitor.onCancelAnalysis = { [weak self] in self?.cancelTypingTask() }
         monitor.currentSourceID = { [weak self] in self?.currentID() ?? "" }
-        monitor.currentApp = { [weak self] in self?.lookupApp() ?? "" }
+        monitor.currentApp = { [weak self] in self?.activeApp?.id ?? "" }
+        monitor.onWordStart = { [weak self] in
+            guard let self else { return }
+            _ = self.lookupApp()
+            self.apply(allowed: self.allowed)
+        }
         monitor.secureInput = { [weak self] in self?.secureInput ?? false }
         hub.observe = { [weak self] event, sequence, boundary in
             guard let self else { return }
@@ -451,6 +457,7 @@ public final class Engine {
 
     /// Engine queue. Applies settings and the desktop state to the monitor.
     public func apply(allowed: Bool) {
+        self.allowed = allowed
         let app = activeApp?.id ?? ""
         let excluded = settings.isExcluded(app)
         let enabled = allowed && settings.values.enabled && !secureInput && !excluded && layouts.count >= 2 && !hub.isFaulted

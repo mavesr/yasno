@@ -64,7 +64,8 @@ public final class Updater {
             guard available, settings.values.automaticUpdates else { return }
             let now = Date()
             let fire = Self.missedCheck(lastCheck: settings.values.lastUpdateCheck, now: now)
-                ? now.addingTimeInterval(300) : Self.nextCheck(after: now)
+                ? now.addingTimeInterval(TimeInterval(ProcessInfo.processInfo.environment["YASNO_UPDATE_DELAY"] ?? "") ?? 300)
+                : Self.nextCheck(after: now)
             let source = DispatchSource.makeTimerSource(queue: queue)
             source.schedule(deadline: .now() + max(fire.timeIntervalSince(now), 1), leeway: .seconds(60))
             source.setEventHandler { [weak self] in self?.check(automatic: true) }
@@ -117,9 +118,11 @@ public final class Updater {
     }
 
     func latestNewer(current: String) throws -> Release? {
-        let data = try Download.data(URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=50")!,
+        // YASNO_UPDATE_FEED (a release list in GitHub's format, any URL) is for testing the update.
+        let feed = ProcessInfo.processInfo.environment["YASNO_UPDATE_FEED"].flatMap(URL.init(string:))
+        let data = try Download.data(feed ?? URL(string: "https://api.github.com/repos/\(repository)/releases?per_page=50")!,
                                      accept: "application/vnd.github+json")
-        guard let release = try Self.parse(data, architecture: Self.architecture) else { return nil }
+        guard let release = try Self.parse(data, architecture: Self.architecture, anyScheme: feed != nil) else { return nil }
         return Self.isNewer(release.version, than: current) ? release : nil
     }
 
@@ -132,7 +135,7 @@ public final class Updater {
 
     /// The newest published Linux release (tag linux-v<version>, not a draft or prerelease)
     /// with an archive for this architecture.
-    public static func parse(_ data: Data, architecture: String) throws -> Release? {
+    public static func parse(_ data: Data, architecture: String, anyScheme: Bool = false) throws -> Release? {
         guard let list = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw UpdateError.noArchive }
         var best: Release?
         for object in list {
@@ -143,7 +146,7 @@ public final class Updater {
             let assets = object["assets"] as? [[String: Any]] ?? []
             func link(_ name: String) -> URL? {
                 guard let asset = assets.first(where: { $0["name"] as? String == name }),
-                      let text = asset["browser_download_url"] as? String, let url = URL(string: text), url.scheme == "https" else { return nil }
+                      let text = asset["browser_download_url"] as? String, let url = URL(string: text), anyScheme || url.scheme == "https" else { return nil }
                 return url
             }
             let name = "yasno-linux-\(version)-\(architecture).tar.gz"

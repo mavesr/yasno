@@ -77,7 +77,7 @@ struct MainView: View {
                 Text(model.detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Label("На вашем Mac · без истории ввода", systemImage: "lock.shield")
+                Label("На вашем Mac · ввод записывается только в диагностике", systemImage: "lock.shield")
                 Spacer()
                 Text("Исправлено: \(model.corrections)")
             }.font(.system(size: 10)).foregroundStyle(.secondary)

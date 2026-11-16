@@ -6,3 +6,4 @@ dist/
 .swiftpm/
 *.dmg
 __pycache__/
+.test-work/

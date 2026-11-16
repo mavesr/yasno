@@ -161,7 +161,10 @@ final class KeyboardMonitor {
     func syncApplication(_ newPID: pid_t) {
         dispatchPrecondition(condition: .onQueue(.main))
         guard pid != newPID else { return }
-        if !token.isEmpty { Trace.switching.info("application changed mid-word: \(self.token.count) keys dropped, pid \(self.pid) → \(newPID)") }
+        if !token.isEmpty {
+            Trace.switching.info("application changed mid-word: \(self.token.count) keys dropped, pid \(self.pid) → \(newPID)")
+            Diagnostics.note("word_dropped", ["reason": "application changed mid-word", "text": token, "pid": Int(pid), "new_pid": Int(newPID)])
+        }
         reset()
         pid = newPID
     }
@@ -298,6 +301,7 @@ final class KeyboardMonitor {
         let layout = replayLayout, halted = stopped
         lock.unlock()
         Trace.switching.info("replay failed: \(remaining.count) captured events released, permanent=\(permanent)")
+        Diagnostics.note("replay_failed", ["events": remaining.count, "permanent": permanent])
         if permanent { enabled = false } else { reset() }
         // A failed replay must never leave the keyboard or mouse captured indefinitely.
         for event in remaining { prepare(event, tag: Self.editTag, layout: layout); postEvent(event) }
@@ -420,7 +424,10 @@ final class KeyboardMonitor {
     func reset(reason: String = #function) {
         dispatchPrecondition(condition: .onQueue(.main))
         lock.lock(); generation &+= 1; lock.unlock()
-        if !token.isEmpty { Trace.switching.info("word of \(self.token.count) letters dropped by \(reason, privacy: .public)") }
+        if !token.isEmpty {
+            Trace.switching.info("word of \(self.token.count) letters dropped by \(reason, privacy: .public)")
+            Diagnostics.note("word_dropped", ["reason": reason, "text": token, "pid": Int(pid)])
+        }
         token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; composing = false; shiftGesture.reset()
         focusMovedDuringWord = false
         onCancelAnalysis?()
@@ -634,7 +641,7 @@ final class KeyboardMonitor {
             shiftGesture.cancel()
             return
         }
-        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown { reset(); return }
+        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown { reset(reason: "mouse click"); return }
         let flags = event.flags
         let key = event.getIntegerValueField(.keyboardEventKeycode)
         if type == .flagsChanged {
@@ -674,7 +681,10 @@ final class KeyboardMonitor {
         let previous = completedToken
         if key != 49 && !(key == 51 && clean) { completedToken = nil }
         guard clean, pid > 0 else {
-            if clean { Trace.switching.info("key without an application: \(self.token.count) keys dropped") }
+            if clean {
+                Trace.switching.info("key without an application: \(self.token.count) keys dropped")
+                Diagnostics.note("word_dropped", ["reason": "key without an application", "text": token])
+            }
             token = ""; physicalKeys = []; onCancelAnalysis?(); return
         }
         let currentID = sourceID
@@ -730,6 +740,8 @@ final class KeyboardMonitor {
                                             capsLock: flags.contains(.maskAlphaShift))
         else {
             Trace.switching.info("key without a character in the current layout: word of \(self.token.count) letters dropped")
+            Diagnostics.note("word_dropped", ["reason": "key without a character in the layout", "text": token,
+                                              "key": Int(key), "layout": currentID, "pid": Int(pid)])
             token = ""; return
         }
         // The application composes a dead key with the next one (c a f ' e is café on US
@@ -737,11 +749,13 @@ final class KeyboardMonitor {
         if composing || layout.isDeadKey(key: UInt16(key), shift: flags.contains(.maskShift),
                                          capsLock: flags.contains(.maskAlphaShift)) {
             Trace.switching.info("dead key: word of \(self.token.count) letters dropped")
+            Diagnostics.note("word_dropped", ["reason": "dead key", "text": token, "key": Int(key), "layout": currentID, "pid": Int(pid)])
             composing = true; token = ""; physicalKeys = []; onCancelAnalysis?(); return
         }
         guard !string.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               token.count + string.count <= 512 else {
             Trace.switching.info("control character or overlong word: word of \(self.token.count) letters dropped")
+            Diagnostics.note("word_dropped", ["reason": "control character or overlong word", "text": String(token.prefix(80)), "pid": Int(pid)])
             token = ""; return
         }
         token += string

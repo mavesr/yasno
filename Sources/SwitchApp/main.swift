@@ -10,6 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusLabel: NSMenuItem!
     private var pauseItem: NSMenuItem!
+    private var diagnostics: DiagnosticService!
+    private var diagnosticItem: NSMenuItem!
+    private var diagnosticWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // The website and App Store editions have different IDs; two taps would correct every word twice.
@@ -23,6 +26,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         model = AppModel()
         updater = Updater()
+        diagnostics = DiagnosticService()
+        diagnostics.context = { [weak self] in
+            guard let model = self?.model else { return [:] }
+            return ["status": model.status, "enabled": model.enabled, "monitoring": model.monitor.enabled,
+                    "layouts": model.layoutNames, "excluded_apps": Array(model.excludedApps.keys).sorted(),
+                    "correct_spelling": model.correctSpelling, "accessibility": model.accessibility,
+                    "input_monitoring": model.inputMonitoring, "secure_input": model.secureInput,
+                    "edition": AccessibleEditor.blind ? "App Store" : "website"]
+        }
+        diagnostics.onChange = { [weak self] in
+            guard let self else { return }
+            self.diagnosticItem.title = self.diagnostics.enabled ? "Выключить диагностику ✓" : "Включить диагностику ввода"
+        }
+        diagnostics.onMessage = { text in
+            let alert = NSAlert()
+            alert.messageText = "Диагностика ввода"
+            alert.informativeText = text
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
         updater.onInstalled = { NSApp.terminate(nil) }
         window = NSWindow(contentViewController: NSHostingController(rootView: MainView(model: model, updater: updater)))
         window.title = "Ясно"
@@ -39,6 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pauseItem = add("Приостановить", action: #selector(toggleEnabled), to: menu)
         add("Не работать в этом приложении", action: #selector(excludeApp), to: menu)
         if updater.available { add("Проверить обновления", action: #selector(checkForUpdates), to: menu) }
+        menu.addItem(.separator())
+        diagnosticItem = add("Включить диагностику ввода", action: #selector(toggleDiagnostics), to: menu)
+        add("Настройки диагностики…", action: #selector(showDiagnostics), to: menu)
         menu.addItem(.separator())
         add("Завершить Ясно", action: #selector(quit), to: menu)
         statusItem.menu = menu
@@ -69,7 +95,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func excludeApp() { model.excludeFrontmost() }
     @MainActor @objc private func checkForUpdates() { updater.check(); showWindow() }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func toggleDiagnostics() { diagnostics.toggle() }
+    @objc private func showDiagnostics() {
+        if diagnosticWindow == nil {
+            let window = NSWindow(contentViewController: NSHostingController(rootView: DiagnosticSettingsView(diagnostics: diagnostics)))
+            window.title = "Диагностика ввода"
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            diagnosticWindow = window
+        }
+        diagnosticWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // A session left on is closed and kept on this Mac; it is sent from the settings later.
+        diagnostics?.shutdown()
         guard let model else { return .terminateNow }
         model.shutdown { sender.reply(toApplicationShouldTerminate: true) }
         return .terminateLater

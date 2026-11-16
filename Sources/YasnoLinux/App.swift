@@ -13,6 +13,8 @@ public final class App {
     let devices: InputDevices?
     let engine: Engine
     let updater: Updater
+    let diagnostics = DiagnosticService()
+    private var lastReport: InputDevices.Report?
     private var timer: DispatchSourceTimer?
     private var stalls: [TimeInterval] = []
     private var accessOK = false
@@ -39,6 +41,27 @@ public final class App {
         updater.onInstalled = { [weak self] directory in self?.restart(into: directory) }
         let engineStall = hub.onStall
         hub.onStall = { [weak self] in engineStall?(); self?.stalled() }
+        diagnostics.onChange = { [weak self] in self?.engine.queue.async { self?.post() } }
+        diagnostics.onMessage = { text in Desktop.notify(title: "Диагностика ввода", body: text) }
+        diagnostics.context = { [weak self] in self?.diagnosticContext() ?? [:] }
+    }
+
+    /// What a journal needs to know first: the desktop, its layouts, the keyboards and the settings.
+    private func diagnosticContext() -> [String: Any] {
+        let environment = ProcessInfo.processInfo.environment
+        var context: [String: Any] = [
+            "session_type": environment["XDG_SESSION_TYPE"] ?? "", "desktop": environment["XDG_CURRENT_DESKTOP"] ?? "",
+            "backend": engine.backend?.name ?? "none", "layouts": engine.layouts.map(\.id), "layout_names": engine.layoutNames,
+            "access": accessOK, "virtual_keyboard": sink != nil, "enabled": settings.values.enabled,
+            "monitoring": engine.monitor.enabled, "correct_spelling": settings.values.correctSpelling,
+            "excluded_apps": settings.values.excludedApps.keys.sorted(), "status": statusText.0, "app": engine.currentAppID]
+        if let report = devices?.report { context["devices"] = Self.describe(report) }
+        return context
+    }
+
+    static func describe(_ report: InputDevices.Report) -> [String: Any] {
+        ["grabbed": report.grabbed, "busy": report.busy, "unreadable": report.unreadable,
+         "self_captured": report.selfCaptured, "looped": report.looped, "remappers": report.remappers]
     }
 
     // MARK: Start
@@ -77,6 +100,11 @@ public final class App {
         engine.sourceChanged()
         engine.refreshApp()
         engine.secureInput = engine.backend?.secure() ?? false
+        Diagnostics.setSecure(engine.secureInput)
+        if Diagnostics.active, let report = devices?.report, report != lastReport {
+            lastReport = report
+            Diagnostics.note("devices", Self.describe(report))
+        }
         engine.apply(allowed: accessOK && engine.detectorLoaded)
         devices?.setGrab(accessOK && settings.values.enabled && engine.layouts.count >= 2 && !hub.isFaulted)
         post()
@@ -160,8 +188,10 @@ public final class App {
         let updateMessage = updater.available ? updater.message : "Обновления работают в установленной копии."
         let appID = engine.currentAppID
         let monitoring = engine.monitor.enabled
+        let diagnostic = diagnostics.state
         let key = [status, detail, engine.layoutNames, updateMessage, values.ignoredWords, apps, hint, button,
-                   "\(values.enabled)\(monitoring)\(values.correctSpelling)\(Setup.loginEnabled)\(values.automaticUpdates)\(updater.available)\(updater.busy)\(engine.corrections)\(appID)"]
+                   "\(values.enabled)\(monitoring)\(values.correctSpelling)\(Setup.loginEnabled)\(values.automaticUpdates)\(updater.available)\(updater.busy)\(engine.corrections)\(appID)",
+                   "\(diagnostic)"]
             .joined(separator: "\u{1}")
         guard key != lastPosted else { return }
         lastPosted = key
@@ -169,14 +199,20 @@ public final class App {
         status.withCString { s in detail.withCString { d in engine.layoutNames.withCString { l in
             updateMessage.withCString { u in values.ignoredWords.withCString { w in apps.withCString { a in
                 hint.withCString { h in button.withCString { b in
+                diagnostic.message.withCString { dm in diagnostic.repo.withCString { dr in
                     var state = yl_ui_state(status: s, detail: d, layouts: l, update_message: u, ignored_words: w,
                                             excluded_apps: a, setup_hint: h, setup_button: b,
                                             enabled: values.enabled ? 1 : 0, monitoring: monitoring ? 1 : 0,
                                             spelling: values.correctSpelling ? 1 : 0, login: Setup.loginEnabled ? 1 : 0,
                                             automatic_updates: values.automaticUpdates ? 1 : 0,
                                             update_available: updater.available ? 1 : 0, update_busy: updater.busy ? 1 : 0,
-                                            corrections: Int32(engine.corrections), can_exclude: canExclude ? 1 : 0)
+                                            corrections: Int32(engine.corrections), can_exclude: canExclude ? 1 : 0,
+                                            diagnostic_message: dm, diagnostic_repo: dr,
+                                            diagnostics: diagnostic.enabled ? 1 : 0, diagnostic_events: Int32(diagnostic.events),
+                                            diagnostic_queued: Int32(diagnostic.queued), diagnostic_token: diagnostic.hasToken ? 1 : 0,
+                                            diagnostic_busy: diagnostic.busy ? 1 : 0)
                     yl_ui_post_state(&state)
+                } }
                 } }
             } } }
         } } }
@@ -217,8 +253,25 @@ public final class App {
         case Int(YL_ACTION_TOGGLE_PAUSE): toggle(0, !settings.values.enabled)
         // The tray calls on the GTK main thread, where the window may be shown.
         case Int(YL_ACTION_SHOW): yl_ui_show()
+        case Int(YL_ACTION_SHOW_DIAGNOSTICS): yl_ui_show_diagnostics()
+        // Also on the GTK main thread: the warning is a modal dialog.
+        case Int(YL_ACTION_DIAGNOSTICS):
+            if diagnostics.state.enabled { diagnostics.stop(); return }
+            let send = diagnostics.canSend ? " При выключении журнал сохраняется на этом компьютере и отправляется в приватный репозиторий \(diagnostics.state.repo)."
+                : " При выключении журнал сохраняется на этом компьютере."
+            guard yl_ui_confirm("Включить диагностику ввода?", DiagnosticService.warning + send, "Включить") != 0 else { return }
+            diagnostics.start(versions: ["yasno": YasnoVersion.current, "os": Self.osName,
+                                         "kernel": ProcessInfo.processInfo.operatingSystemVersionString])
+        case Int(YL_ACTION_JOURNALS): Desktop.open(diagnostics.queueFolder)
+        case Int(YL_ACTION_SEND_JOURNALS): diagnostics.flush()
         default: break
         }
+    }
+
+    static var osName: String {
+        guard let text = try? String(contentsOfFile: "/etc/os-release", encoding: .utf8) else { return "" }
+        let line = text.split(separator: "\n").first { $0.hasPrefix("PRETTY_NAME=") } ?? ""
+        return line.dropFirst("PRETTY_NAME=".count).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
     }
 
     func ignoredChanged(_ text: String) {
@@ -266,6 +319,7 @@ public final class App {
     // MARK: Quit and restart
 
     func quit() {
+        diagnostics.shutdown()
         timer?.cancel()
         devices?.stop()
         yl_ui_quit()
@@ -298,7 +352,11 @@ public final class App {
             action: { which in App.shared?.action(which) },
             ignored_changed: { text in if let text { App.shared?.ignoredChanged(String(cString: text)) } },
             remove_app: { id in if let id { App.shared?.removeApp(String(cString: id)) } },
-            started: { background in App.shared?.started(background: background != 0) })
+            started: { background in App.shared?.started(background: background != 0) },
+            diagnostic_save: { repo, token, replace in
+                App.shared?.diagnostics.save(repo: repo.map { String(cString: $0) } ?? "",
+                                             token: token.map { String(cString: $0) } ?? "", replaceToken: replace != 0)
+            })
         var argv = arguments.map { strdup($0) }
         defer { argv.forEach { free($0) } }
         let status = YasnoVersion.current.withCString { version in

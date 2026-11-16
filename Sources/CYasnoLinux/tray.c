@@ -9,12 +9,12 @@ static const yl_ui_callbacks *cb;
 static GDBusConnection *bus;
 static guint revision = 1;
 static char *status_text, *icon_path;
-static int enabled = 1, monitoring = 0, can_exclude = 0, updates = 0;
+static int enabled = 1, monitoring = 0, can_exclude = 0, updates = 0, diagnostics = 0;
 static guint watcher_id;
 static char bus_name[128];
 
 enum { ITEM_ROOT = 0, ITEM_STATUS = 1, ITEM_SEP1 = 2, ITEM_OPEN = 3, ITEM_PAUSE = 4, ITEM_EXCLUDE = 5,
-       ITEM_UPDATES = 6, ITEM_SEP2 = 7, ITEM_QUIT = 8 };
+       ITEM_UPDATES = 6, ITEM_SEP3 = 7, ITEM_DIAGNOSTICS = 8, ITEM_DIAGNOSTIC_SETTINGS = 9, ITEM_SEP2 = 10, ITEM_QUIT = 11 };
 
 static const char *sni_xml =
     "<node><interface name='org.kde.StatusNotifierItem'>"
@@ -55,13 +55,15 @@ static GVariant *item_properties(int id) {
     case ITEM_ROOT: g_variant_builder_add(&b, "{sv}", "children-display", g_variant_new_string("submenu")); break;
     case ITEM_STATUS: label = status_text ? status_text : "Ясно";
         g_variant_builder_add(&b, "{sv}", "enabled", g_variant_new_boolean(FALSE)); break;
-    case ITEM_SEP1: case ITEM_SEP2: g_variant_builder_add(&b, "{sv}", "type", g_variant_new_string("separator")); break;
+    case ITEM_SEP1: case ITEM_SEP2: case ITEM_SEP3: g_variant_builder_add(&b, "{sv}", "type", g_variant_new_string("separator")); break;
     case ITEM_OPEN: label = "Открыть Ясно…"; break;
     case ITEM_PAUSE: label = enabled ? "Приостановить" : "Включить"; break;
     case ITEM_EXCLUDE: label = "Не работать в этом приложении";
         g_variant_builder_add(&b, "{sv}", "enabled", g_variant_new_boolean(can_exclude)); break;
     case ITEM_UPDATES: label = "Проверить обновления";
         g_variant_builder_add(&b, "{sv}", "visible", g_variant_new_boolean(updates)); break;
+    case ITEM_DIAGNOSTICS: label = diagnostics ? "Выключить диагностику ✓" : "Включить диагностику ввода"; break;
+    case ITEM_DIAGNOSTIC_SETTINGS: label = "Диагностика ввода…"; break;
     case ITEM_QUIT: label = "Завершить Ясно"; break;
     }
     if (label) g_variant_builder_add(&b, "{sv}", "label", g_variant_new_string(label));
@@ -85,6 +87,8 @@ static void clicked(int id) {
     case ITEM_PAUSE: cb->action(YL_ACTION_TOGGLE_PAUSE); break;
     case ITEM_EXCLUDE: cb->action(YL_ACTION_EXCLUDE); break;
     case ITEM_UPDATES: cb->action(YL_ACTION_CHECK_UPDATES); cb->action(YL_ACTION_SHOW); break;
+    case ITEM_DIAGNOSTICS: cb->action(YL_ACTION_DIAGNOSTICS); break;
+    case ITEM_DIAGNOSTIC_SETTINGS: cb->action(YL_ACTION_SHOW_DIAGNOSTICS); break;
     case ITEM_QUIT: cb->action(YL_ACTION_QUIT); break;
     }
 }
@@ -188,11 +192,13 @@ void yl_tray_start(const yl_ui_callbacks *callbacks) {
 void yl_tray_update(const yl_ui_state *state) {
     if (!bus) return;
     int changed = !status_text || strcmp(status_text, state->status) || enabled != state->enabled ||
-                  monitoring != state->monitoring || can_exclude != state->can_exclude || updates != state->update_available;
+                  monitoring != state->monitoring || can_exclude != state->can_exclude || updates != state->update_available ||
+                  diagnostics != state->diagnostics;
     if (!changed) return;
     int icon_changed = monitoring != state->monitoring;
     g_free(status_text); status_text = g_strdup(state->status);
     enabled = state->enabled; monitoring = state->monitoring; can_exclude = state->can_exclude; updates = state->update_available;
+    diagnostics = state->diagnostics;
     revision++;
     g_dbus_connection_emit_signal(bus, NULL, "/MenuBar", "com.canonical.dbusmenu", "LayoutUpdated", g_variant_new("(ui)", revision, 0), NULL);
     g_dbus_connection_emit_signal(bus, NULL, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "NewToolTip", NULL, NULL);

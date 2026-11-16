@@ -91,7 +91,8 @@ public final class Engine {
         hub.onStall = { [weak self] in
             self?.queue.async {
                 self?.receipt = nil
-                self?.monitor.reset()
+                self?.monitor.reset(reason: "input held too long and released")
+                Diagnostics.note("stall")
                 self?.setDetail("Ввод был задержан и отпущен без исправления.")
             }
         }
@@ -130,7 +131,8 @@ public final class Engine {
         }
         layouts = built
         monitor.layouts = built
-        monitor.reset()
+        monitor.reset(reason: "layout list changed")
+        Diagnostics.note("layouts", ["layouts": next.map { ["id": $0.id] }, "built": built.map(\.id)])
         return true
     }
 
@@ -171,7 +173,13 @@ public final class Engine {
     }
 
     func lookupApp() -> String {
-        if let app = backend?.focusedApplication() { activeApp = app }
+        if let app = backend?.focusedApplication() {
+            if app.id != activeApp?.id {
+                Diagnostics.note("app", ["app": app.id, "name": app.name, "previous": activeApp?.id ?? "",
+                                         "excluded": settings.isExcluded(app.id), "monitoring": monitor.enabled])
+            }
+            activeApp = app
+        }
         return activeApp?.id ?? ""
     }
 
@@ -251,13 +259,25 @@ public final class Engine {
     }
 
     private func process(_ token: WordMonitor.Token, whileTyping: Bool = false, paused: Bool = false) {
-        if !whileTyping { cancelTypingTask() }
+        if !whileTyping {
+            cancelTypingTask()
+            Diagnostics.note("word", Diagnostics.word(token, live: false, ["name": activeApp?.name ?? "", "current_layout": currentID()]))
+        }
         if token.liveConverted {
             updateLiveReceipt(token)
-            if whileTyping || !settings.values.correctSpelling { return }
+            if whileTyping || !settings.values.correctSpelling {
+                if !whileTyping { Diagnostics.note("skipped", Diagnostics.word(token, live: false, ["reason": "already converted while typed"])) }
+                return
+            }
         } else { receipt = nil }
         guard monitor.enabled, monitor.revision == token.revision,
-              let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
+              let source = layouts.first(where: { $0.id == token.sourceID }) else {
+            if !whileTyping {
+                let reason = !monitor.enabled ? "monitoring off" : monitor.revision != token.revision ? "newer input" : "layout not known"
+                Diagnostics.note("skipped", Diagnostics.word(token, live: false, ["reason": reason, "layouts": layouts.map(\.id)]))
+            }
+            return
+        }
         guard whileTyping else { correct(token, whileTyping: false); return }
         let request = self.request(for: token, source: source, whileTyping: true, paused: paused)
         worker.async { [self] in
@@ -270,16 +290,39 @@ public final class Engine {
         guard monitor.enabled, monitor.revision == token.revision,
               let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
         let request = self.request(for: token, source: source, whileTyping: whileTyping, paused: paused)
-        guard detectorLoaded, hub.beginGate(revision: token.revision) else { return }
+        guard detectorLoaded, hub.beginGate(revision: token.revision) else {
+            if !whileTyping {
+                Diagnostics.note("skipped", Diagnostics.word(token, live: false, [
+                    "reason": detectorLoaded ? "another edit in progress" : "dictionaries still loading"]))
+            }
+            return
+        }
         worker.async { [self] in
             defer { queue.async { self.hub.endGate(revision: token.revision) } }
             guard hub.revision == token.revision else { return }
-            guard whileTyping || detector.mayCorrect(request) else { return }
-            guard let suggestion = detector.correction(request, context: ""),
-                  let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source),
+            guard whileTyping || detector.mayCorrect(request) else {
+                Diagnostics.note("no_suggestion", Diagnostics.word(token, live: false, [
+                    "reason": "dictionaries see no other layout", "spelling": request.correctSpelling]))
+                return
+            }
+            guard let suggestion = detector.correction(request, context: "") else {
+                Diagnostics.note("no_suggestion", Diagnostics.word(token, live: whileTyping, ["reason": "no correction"]))
+                return
+            }
+            guard let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source),
                   hub.revision == token.revision, !secureInput,
-                  hub.commitGate(revision: token.revision) else { return }
+                  hub.commitGate(revision: token.revision) else {
+                let reason = suggestion.target.id == source.id ? "spelling fix in the same layout (not typed on Linux)"
+                    : token.text.count < 2 ? "one letter: converted only by Shift"
+                    : secureInput ? "password entry" : "newer input"
+                Diagnostics.note("skipped", Diagnostics.word(token, live: whileTyping, [
+                    "reason": reason, "replacement": suggestion.replacement, "target": suggestion.target.id]))
+                return
+            }
             let typed = type(edit, typed: token.text, suffix: token.suffix, from: source, in: suggestion.target)
+            Diagnostics.note("edit", Diagnostics.word(token, live: whileTyping, [
+                "result": typed ? "success" : "failed", "replacement": suggestion.replacement, "target": suggestion.target.id,
+                "deletions": edit.deletions, "layout_after": currentIDSafe()]))
             queue.sync {
                 self.handle(typed, original: token.text, replacement: suggestion.replacement, sourceID: source.id,
                             target: suggestion.target, live: whileTyping, keystrokeSuffix: token.suffix, app: token.app)
@@ -312,6 +355,8 @@ public final class Engine {
         hub.progress()
         trace("type: selected \(selected), now \(currentIDSafe())")
         guard selected else {
+            Diagnostics.note("layout_not_selected", ["target": target.id, "current": currentIDSafe(),
+                                                     "backend": backend?.name ?? "none", "restored": restore.count == erased.count])
             if restore.count == erased.count { typist.press(restore) }
             return false
         }
@@ -342,6 +387,7 @@ public final class Engine {
         if cycle != nil {
             guard selectManually(target, app: app) else { return }
         } else if currentID() != target.id, !selectLayout(target) {
+            Diagnostics.note("layout_not_selected", ["target": target.id, "current": currentID(), "after_edit": true])
             setDetail("Текст исправлен, но раскладку переключить не удалось."); return
         }
         if live { monitor.resumeAfterLiveCorrection(text: replacement, sourceID: target.id, app: app) }
@@ -462,6 +508,9 @@ public final class Engine {
         let excluded = settings.isExcluded(app)
         let enabled = allowed && settings.values.enabled && !secureInput && !excluded && layouts.count >= 2 && !hub.isFaulted
         if monitor.enabled != enabled {
+            Diagnostics.note("monitor", ["enabled": enabled, "allowed": allowed, "switched_on": settings.values.enabled,
+                                         "secure": secureInput, "app": app, "excluded": excluded,
+                                         "layouts": layouts.count, "faulted": hub.isFaulted])
             trace("monitoring \(enabled): allowed \(allowed) enabled \(settings.values.enabled) secure \(secureInput) app \(app.debugDescription) excluded \(excluded) layouts \(layouts.count) faulted \(hub.isFaulted)")
         }
         monitor.enabled = enabled

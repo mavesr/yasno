@@ -214,7 +214,8 @@ impl Sim {
             .filter(|r: &CorrectionRequest| self.detector.may_correct(r))
             .and_then(|r| self.detector.correction(&r, &check.context))
             .map(|s| (s.replacement, s.target.id.clone()));
-        self.posted.push_back(Posted::Answer(Answer { version: check.version, gated, correction }));
+        let reason = correction.is_none().then_some("no correction");
+        self.posted.push_back(Posted::Answer(Answer { version: check.version, gated, correction, reason }));
     }
 
     fn fire_timers(&mut self) {
@@ -435,4 +436,44 @@ fn password_fields_and_pause_pass_everything_untouched() {
     sim.engine.set_enabled(false, Context { now: 0, layout: Some(US) });
     let mut rng = Rng(3);
     assert_eq!(sim.run_randomly(&mut rng, 1).0, "ghbdtn rfr ");
+}
+
+#[test]
+fn diagnostics_note_each_finished_word_and_what_was_done() {
+    use yasno_core::diagnostics::SECRET;
+    let mut sim = Sim::new(standard(), US, "ghbdtn hello ", false);
+    sim.engine.set_diagnostics(true);
+    let (text, mut sim) = sim.run_slowly();
+    assert_eq!(text, "привет hello ");
+    let notes = sim.engine.take_notes();
+    let events: Vec<&str> = notes.iter().map(|n| n["event"].as_str().unwrap()).collect();
+    // Both words are converted while typed (live), then checked again after Space.
+    assert_eq!(events, vec!["edit", "word", "no_suggestion", "edit", "word", "no_suggestion"], "{notes:?}");
+    assert_eq!(notes[0]["text"], "ghbd");
+    assert_eq!(notes[0]["layout"], US);
+    assert_eq!(notes[0]["replacement"], "прив");
+    assert_eq!(notes[0]["target"], RU);
+    assert_eq!(notes[0]["live"], true);
+    assert_eq!(notes[0]["result"], "sent");
+    assert_eq!(notes[1]["text"], "привет");
+    assert_eq!(notes[1]["held"], true);
+    assert_eq!(notes[1]["live_converted"], true);
+    assert_eq!(notes[2]["live"], false);
+    assert_eq!(notes[5]["text"], "hello");
+
+    // A click in the middle of a word, and a field that may hold a secret.
+    let mut sim = Sim::new(standard(), US, "ghb", false);
+    sim.engine.set_diagnostics(true);
+    sim.engine.set_redact(Some(SECRET));
+    let (_, mut sim) = sim.run_slowly();
+    sim.engine.caret_moved();
+    let notes = sim.engine.take_notes();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0]["event"], "word_dropped");
+    assert_eq!(notes[0]["reason"], "mouse click");
+    assert_eq!(notes[0]["text"], SECRET);
+
+    // Off, nothing is noted.
+    let (_, mut sim) = Sim::new(standard(), US, "ghbdtn ", false).run_slowly();
+    assert!(sim.engine.take_notes().is_empty());
 }

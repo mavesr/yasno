@@ -5,6 +5,7 @@
 //! The hook only asks the engine what to do with a key and posts the rest to itself:
 //! Windows removes a low-level hook that answers too slowly, so nothing slow happens there.
 
+mod diagnostics;
 mod field;
 mod input;
 mod install;
@@ -30,10 +31,12 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 use windows_sys::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
+use serde_json::{json, Map, Value};
+use yasno_core::diagnostics::{State as DiagnosticState, SECRET};
 use yasno_core::engine::{Answer, Context, Effect, Engine, RawKey, Timer};
 use yasno_core::typing::Check;
 use yasno_core::{Detector, KeyboardLayout};
@@ -48,6 +51,7 @@ const WM_APP_READY: u32 = WM_APP + 6;
 const WM_APP_SHOW: u32 = WM_APP + 7;
 const WM_APP_UPDATE: u32 = WM_APP + 8;
 const WM_APP_QUIT: u32 = WM_APP + 9;
+const WM_APP_DIAGNOSTICS: u32 = WM_APP + 10;
 const TIMER_PAUSE: usize = 1;
 const TIMER_WATCHDOG: usize = 2;
 const TIMER_UPDATE: usize = 3;
@@ -57,6 +61,8 @@ const MENU_OPEN: usize = 1;
 const MENU_PAUSE: usize = 2;
 const MENU_EXCLUDE: usize = 3;
 const MENU_UPDATE: usize = 4;
+const MENU_DIAGNOSTICS: usize = 5;
+const MENU_DIAGNOSTIC_SETTINGS: usize = 6;
 const MENU_QUIT: usize = 9;
 
 const CLASS: &str = "YasnoTray";
@@ -86,7 +92,10 @@ pub struct App {
     pub last_app: Option<String>,
     field_generation: u64,
     last_focus: (usize, i32, i32),
-    inspector: Sender<u64>,
+    inspector: Sender<field::Request>,
+    /// The diagnostic service, on its own thread, and its last reported state.
+    diagnostics: Sender<diagnostics::Command>,
+    pub diagnostic: DiagnosticState,
     pub update_busy: bool,
     pub update_message: String,
     pub detail: String,
@@ -185,12 +194,14 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
     let (sender, receiver) = channel::<Job>();
     let target = hwnd as usize;
     std::thread::Builder::new().name("detector".into()).spawn(move || worker(receiver, target)).ok();
-    let (inspector, requests) = channel::<u64>();
+    let (inspector, requests) = channel::<field::Request>();
     std::thread::Builder::new().name("field".into())
         .spawn(move || field::inspector(requests, target, WM_APP_FIELD)).ok();
 
     let settings = Settings::load();
     let ignored = Arc::new(settings.ignored_words.iter().cloned().collect());
+    let diagnostic = DiagnosticState { repo: settings.diagnostic_repo.clone(), ..DiagnosticState::default() };
+    let diagnostic_service = diagnostics::spawn(target, WM_APP_DIAGNOSTICS, settings.diagnostic_repo.clone());
     let (hkls, layouts) = load_layouts();
     let mut engine = Engine::new(layouts);
     engine.set_ready(false);
@@ -199,7 +210,7 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
     APP.with(|cell| *cell.borrow_mut() = Some(App {
         hwnd, hkls, engine, worker: sender, settings, ignored, outbox: Vec::new(), flush_posted: false, target: None,
         excluded: false, elevated: false, last_app: None, field_generation: 0, last_focus: (0, 0, 0), inspector,
-        update_busy: false, update_message: String::new(), detail: String::new(),
+        update_busy: false, update_message: String::new(), detail: String::new(), diagnostics: diagnostic_service, diagnostic,
     }));
 
     add_tray_icon(hwnd);
@@ -231,6 +242,8 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
         }
     }
     remove_tray_icon(hwnd);
+    // An open diagnostic session is closed and kept, to be sent another time.
+    if let Some(service) = with_app(|a| a.diagnostics.clone()) { diagnostics::shutdown(&service); }
     if !mutex.is_null() { CloseHandle(mutex); }
     if SELF_TEST_FAILED.load(std::sync::atomic::Ordering::SeqCst) { std::process::exit(1); }
 }
@@ -258,12 +271,16 @@ fn worker(jobs: Receiver<Job>, hwnd: usize) {
         for (i, job) in batch.into_iter().enumerate() {
             if !job.gated && Some(i) != newest_live { continue; }
             let all: Vec<&KeyboardLayout> = job.layouts.iter().collect();
-            let correction = job.check.request(&all, &job.ignored, job.preferred.as_deref(), job.correct_spelling)
-                .filter(|r| detector.may_correct(r))
-                .and_then(|r| detector.correction(&r, &job.check.context))
-                .map(|s| (s.replacement, s.target.id.clone()));
+            let (correction, reason) = match job.check.request(&all, &job.ignored, job.preferred.as_deref(), job.correct_spelling) {
+                None => (None, Some("layout not known")),
+                Some(r) if !detector.may_correct(&r) => (None, Some("dictionaries see no other layout")),
+                Some(r) => match detector.correction(&r, &job.check.context) {
+                    Some(s) => (Some((s.replacement, s.target.id.clone())), None),
+                    None => (None, Some("no correction")),
+                },
+            };
             if correction.is_none() && !job.gated { continue; }
-            let answer = Box::new(Answer { version: job.check.version, gated: job.gated, correction });
+            let answer = Box::new(Answer { version: job.check.version, gated: job.gated, correction, reason });
             unsafe { PostMessageW(hwnd as HWND, WM_APP_ANSWER, 0, Box::into_raw(answer) as LPARAM); }
         }
     }
@@ -322,8 +339,49 @@ impl App {
     fn now() -> u64 { unsafe { windows_sys::Win32::System::SystemInformation::GetTickCount64() } }
 
     /// Collect the engine's effects; outside the hook they are performed right away.
+    /// Its notes go to the diagnostic journal (a channel: nothing is written here).
     fn collect(&mut self) {
         self.outbox.extend(self.engine.take_effects());
+        for mut row in self.engine.take_notes() {
+            if !self.diagnostic.enabled { continue; }
+            row.insert("uptime_ms".into(), json!(Self::now()));
+            row.insert("app".into(), json!(self.last_app));
+            let _ = self.diagnostics.send(diagnostics::Command::Record(row));
+        }
+    }
+
+    /// Notes an event of the app itself (focus, layouts, monitoring) while diagnostics are on.
+    fn note(&self, event: &str, fields: impl FnOnce() -> Value) {
+        if !self.diagnostic.enabled { return; }
+        let _ = self.diagnostics.send(diagnostics::Command::Record(diagnostics::row(event, fields(), Self::now())));
+    }
+
+    /// The state of Yasno when a diagnostic session starts, its first event.
+    fn session(&self) -> Map<String, Value> {
+        let layouts: Vec<Value> = self.engine.layouts().iter().zip(&self.hkls).map(|(l, h)| json!({
+            "id": l.id, "name": l.name, "hkl": format!("{h:X}"),
+            "languages": l.languages.iter().map(|x| x.code()).collect::<Vec<_>>()})).collect();
+        let installed = unsafe { GetKeyboardLayoutList(0, std::ptr::null_mut()) };
+        let row = json!({"status": self.status(), "monitoring": self.monitoring(), "paused": self.settings.paused,
+                         "layouts": layouts, "installed_layouts": installed, "exclusions": self.settings.exclusions,
+                         "ignored_words": self.settings.ignored_words.len(), "correct_spelling": self.settings.correct_spelling,
+                         "preferred": self.engine.typing.preferred, "app": self.last_app, "excluded": self.excluded,
+                         "elevated_window": self.elevated, "yasno_elevated": token_elevated(unsafe { GetCurrentProcess() }),
+                         "corrections": self.corrections()});
+        diagnostics::row("session", row, Self::now())
+    }
+
+    /// A report from the diagnostic service.
+    fn diagnostic_update(&mut self, update: diagnostics::Update) {
+        let started = update.state.enabled && !self.diagnostic.enabled;
+        self.diagnostic = update.state;
+        self.engine.set_diagnostics(self.diagnostic.enabled);
+        if started {
+            // The field Yasno sees now, described for the journal.
+            self.field_generation += 1;
+            let _ = self.inspector.send(field::Request { generation: self.field_generation, describe: true });
+        }
+        if let Some(text) = update.message { show_balloon(self.hwnd, &text); }
     }
 
     fn flush(&mut self) {
@@ -332,7 +390,12 @@ impl App {
         for e in effects {
             match e {
                 Effect::Send(batch) => {
-                    if !input::send(&batch) { self.detail = "Windows не приняла ввод от Ясно в этом окне.".into(); }
+                    if !input::send(&batch) {
+                        self.detail = "Windows не приняла ввод от Ясно в этом окне.".into();
+                        let elevated = self.elevated;
+                        self.note("edit", || json!({"result": "failed", "reason": "Windows rejected input sent by Yasno (SendInput)",
+                                                    "elevated_window": elevated}));
+                    }
                 }
                 Effect::Detect { check, gated } => {
                     let _ = self.worker.send(Job { check, gated, layouts: self.engine.layouts().clone(), ignored: self.ignored.clone(),
@@ -394,7 +457,13 @@ impl App {
 
     fn apply_state(&mut self) {
         let enabled = !self.settings.paused && !self.excluded && !self.elevated && self.hkls.len() >= 2;
+        let was = self.engine.enabled();
         self.context_call(|e, ctx| e.set_enabled(enabled, ctx));
+        if was != enabled {
+            let (paused, excluded, elevated, layouts) = (self.settings.paused, self.excluded, self.elevated, self.hkls.len());
+            self.note("monitor", || json!({"enabled": enabled, "status": self.status(), "paused": paused, "excluded": excluded,
+                                           "elevated_window": elevated, "layouts": layouts}));
+        }
     }
 
     pub fn set_paused(&mut self, paused: bool) {
@@ -428,6 +497,9 @@ impl App {
             let (hkls, layouts) = load_layouts();
             self.hkls = hkls;
             self.engine.set_layouts(layouts);
+            self.collect();
+            self.note("layouts", || json!({"layouts": self.engine.layouts().iter().map(|l| json!({"id": l.id, "name": l.name}))
+                .collect::<Vec<_>>()}));
             self.apply_state();
         }
     }
@@ -437,16 +509,35 @@ impl App {
         if self.last_focus == (hwnd, object, child) { return; }
         self.last_focus = (hwnd, object, child);
         self.field_generation += 1;
-        let _ = self.inspector.send(self.field_generation);
-        self.engine.set_editable(false);
+        let _ = self.inspector.send(field::Request { generation: self.field_generation, describe: self.diagnostic.enabled });
+        // The word typed before belongs to the field left behind: noted with its own rules.
         self.context_call(|e, ctx| e.focus_changed(ctx));
+        // Until UI Automation has said what the new field is, nothing typed there is recorded.
+        self.engine.set_redact(Some("not recorded: field not checked yet"));
+        self.engine.set_editable(false);
         self.reload_layouts_if_changed();
-        let Some(target) = layouts::foreground() else { return };
+        let Some(target) = layouts::foreground() else { self.note("focus", || json!({"window": false})); return };
         let Some(name) = process_name(target.pid) else {
+            self.note("focus", || json!({"process": null, "reason": "process not readable: an administrator's window"}));
             self.elevated = true;
             self.apply_state();
             return;
         };
+        if self.diagnostic.enabled {
+            if self.last_app.as_deref() != Some(name.as_str()) {
+                self.note("app", || json!({"app": name, "previous": self.last_app}));
+            }
+            let window = window_info(target);
+            let hkl = layouts::current(target) as usize;
+            let known = self.hkls.contains(&hkl);
+            self.note("focus", || {
+                let mut row = window;
+                row["process"] = json!(name);
+                row["layout"] = json!(format!("{hkl:X}"));
+                row["known_layout"] = json!(known);
+                row
+            });
+        }
         if name == own_process() {
             // Yasno's own windows are left alone, except the self-test field, which stands in for any app.
             self.excluded = !SELF_TEST.load(std::sync::atomic::Ordering::SeqCst);
@@ -456,9 +547,34 @@ impl App {
         }
         self.excluded = self.settings.exclusions.contains(&name);
         self.elevated = is_elevated(target.pid);
+        if self.excluded || self.elevated {
+            let (excluded, elevated) = (self.excluded, self.elevated);
+            self.note("skipped", || json!({"reason": if excluded { "application excluded" } else { "administrator's window" },
+                                           "app": name, "excluded": excluded, "elevated_window": elevated}));
+        }
         self.last_app = Some(name);
         self.engine.set_caps_lock(unsafe { GetKeyState(VK_CAPITAL as i32) } & 1 != 0);
         self.apply_state();
+    }
+}
+
+/// The window with the keyboard focus, as Win32 sees it: classes, caret, process.
+fn window_info(target: layouts::Target) -> Value {
+    unsafe {
+        let class = |h: HWND| -> String {
+            if h.is_null() { return String::new(); }
+            let mut buf = [0u16; 128];
+            let n = GetClassNameW(h, buf.as_mut_ptr(), buf.len() as i32);
+            String::from_utf16_lossy(&buf[..n.max(0) as usize])
+        };
+        let mut info: GUITHREADINFO = std::mem::zeroed();
+        info.cbSize = std::mem::size_of::<GUITHREADINFO>() as u32;
+        let ok = GetGUIThreadInfo(target.thread, &mut info) != 0;
+        let focus = if ok { info.hwndFocus } else { std::ptr::null_mut() };
+        let password = !focus.is_null() && (GetWindowLongW(focus, GWL_STYLE) as u32 & ES_PASSWORD as u32) != 0
+            && class(focus).eq_ignore_ascii_case("edit");
+        json!({"window_class": class(target.window as HWND), "focus_class": class(focus), "caret": ok && !info.hwndCaret.is_null(),
+               "es_password": password, "pid": target.pid})
     }
 }
 
@@ -540,10 +656,19 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
             0
         }
         WM_APP_FIELD => {
-            with_app(|app| if wparam as u64 == app.field_generation {
-                // Nothing typed into a password field is kept or edited.
-                app.engine.set_editable(lparam == 0);
+            let field = Box::from_raw(lparam as *mut field::Field);
+            with_app(|app| if field.generation == app.field_generation {
+                // Nothing typed into a password field is kept, edited or recorded.
+                app.engine.set_redact((field.password || field.secret).then_some(SECRET));
+                app.engine.set_editable(!field.password);
+                if let Some(description) = field.description { app.note("field", || description); }
             });
+            0
+        }
+        WM_APP_DIAGNOSTICS => {
+            let update = Box::from_raw(lparam as *mut diagnostics::Update);
+            with_app(|app| app.diagnostic_update(*update));
+            window::refresh();
             0
         }
         WM_TIMER => {
@@ -630,16 +755,77 @@ fn update_tray_tip(hwnd: HWND, paused: bool) {
     unsafe { Shell_NotifyIconW(NIM_MODIFY, &data); }
 }
 
+/// A notification from the tray icon, for messages the window may not be showing.
+fn show_balloon(hwnd: HWND, text: &str) {
+    let mut data = tray_data(hwnd);
+    data.uFlags = NIF_INFO;
+    data.dwInfoFlags = NIIF_INFO;
+    for (i, c) in "Ясно — диагностика ввода".encode_utf16().take(63).enumerate() { data.szInfoTitle[i] = c; }
+    for (i, c) in text.encode_utf16().take(255).enumerate() { data.szInfo[i] = c; }
+    unsafe { Shell_NotifyIconW(NIM_MODIFY, &data); }
+}
+
+/// Diagnostics on (after the person agreed to the warning) or off; the journal is sent.
+pub fn toggle_diagnostics(owner: HWND) {
+    let Some(enabled) = with_app(|a| a.diagnostic.enabled) else { return };
+    if enabled {
+        with_app(|a| { let _ = a.diagnostics.send(diagnostics::Command::Stop { send: true, why: "user" }); });
+        return;
+    }
+    // The app is not borrowed while the box is open: the hooks keep running.
+    let answer = unsafe {
+        MessageBoxW(owner, wide(diagnostics::WARNING).as_ptr(), wide("Ясно — диагностика ввода").as_ptr(),
+                    MB_OKCANCEL | MB_ICONINFORMATION | MB_SETFOREGROUND)
+    };
+    if answer != IDOK { return; }
+    with_app(|a| {
+        let versions = json!({"app": update::VERSION, "windows": diagnostics::windows_version(), "platform": "windows",
+                              "arch": std::env::consts::ARCH});
+        let session = a.session();
+        let _ = a.diagnostics.send(diagnostics::Command::Start { versions, session });
+    });
+}
+
+pub fn send_journals() {
+    with_app(|a| { let _ = a.diagnostics.send(diagnostics::Command::Flush); });
+}
+
+/// Saves the repository and, when `token` is Some, the token ("" removes it). The message
+/// says what is wrong, or None when it was accepted.
+pub fn save_diagnostic_settings(repo: &str, token: Option<&str>) -> Option<&'static str> {
+    let repo = repo.trim();
+    if !repo.is_empty() && !yasno_core::diagnostics::valid_repo(repo) {
+        return Some("Репозиторий указывается так: владелец/имя, например mavesr/yasno-diagnostics-logs.");
+    }
+    let token = token.map(str::trim);
+    if token.is_some_and(|t| !t.is_empty() && !yasno_core::diagnostics::valid_token(t)) {
+        return Some("Это не похоже на токен GitHub.");
+    }
+    with_app(|a| {
+        a.settings.diagnostic_repo = repo.to_string();
+        a.settings.save();
+        a.diagnostic.repo = repo.to_string();
+        let _ = a.diagnostics.send(diagnostics::Command::Save { repo: repo.to_string(), token: token.map(str::to_string) });
+    });
+    None
+}
+
+pub fn open_journals() {
+    let folder = diagnostics::queue_folder();
+    let _ = std::fs::create_dir_all(&folder);
+    let _ = std::process::Command::new("explorer.exe").arg(&folder).spawn();
+}
+
 fn remove_tray_icon(hwnd: HWND) {
     let data = tray_data(hwnd);
     unsafe { Shell_NotifyIconW(NIM_DELETE, &data); }
 }
 
 fn show_menu(hwnd: HWND) {
-    let Some((status, paused, app, excluded)) = with_app(|a| {
+    let Some((status, paused, app, excluded, diagnosing)) = with_app(|a| {
         let app = a.last_app.clone();
         let excluded = app.as_ref().is_some_and(|n| a.settings.exclusions.contains(n));
-        (a.status(), a.settings.paused, app, excluded)
+        (a.status(), a.settings.paused, app, excluded, a.diagnostic.enabled)
     }) else { return };
     unsafe {
         let menu = CreatePopupMenu();
@@ -652,6 +838,10 @@ fn show_menu(hwnd: HWND) {
             AppendMenuW(menu, MF_STRING, MENU_EXCLUDE, wide(&label).as_ptr());
         }
         AppendMenuW(menu, MF_STRING, MENU_UPDATE, wide("Проверить обновления").as_ptr());
+        AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
+        let label = if diagnosing { "Выключить диагностику ✓" } else { "Включить диагностику ввода" };
+        AppendMenuW(menu, MF_STRING, MENU_DIAGNOSTICS, wide(label).as_ptr());
+        AppendMenuW(menu, MF_STRING, MENU_DIAGNOSTIC_SETTINGS, wide("Диагностика ввода…").as_ptr());
         AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
         AppendMenuW(menu, MF_STRING, MENU_QUIT, wide("Завершить Ясно").as_ptr());
         let mut point = POINT { x: 0, y: 0 };
@@ -679,6 +869,8 @@ fn on_menu(hwnd: HWND, id: usize) {
         MENU_PAUSE => { with_app(|a| { let p = !a.settings.paused; a.set_paused(p); }); window::refresh(); }
         MENU_EXCLUDE => toggle_exclusion(),
         MENU_UPDATE => { window::show(); check_for_updates(false); }
+        MENU_DIAGNOSTICS => { toggle_diagnostics(std::ptr::null_mut()); window::refresh(); }
+        MENU_DIAGNOSTIC_SETTINGS => window::show_diagnostics(),
         MENU_QUIT => unsafe { DestroyWindow(hwnd); },
         _ => {}
     }

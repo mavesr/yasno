@@ -94,6 +94,8 @@ impl Typing {
     /// A word is being typed: no Space after it yet.
     pub fn in_word(&self) -> bool { !self.text.is_empty() && self.suffix.is_empty() }
     pub fn version(&self) -> u64 { self.version }
+    /// The layout the word was typed in.
+    pub fn layout_id(&self) -> &str { &self.layout_id }
 
     /// Forget everything: the caret may be anywhere now.
     pub fn reset(&mut self) {

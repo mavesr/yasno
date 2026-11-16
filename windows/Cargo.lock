@@ -469,9 +469,10 @@ dependencies = [
 
 [[package]]
 name = "yasno"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "embed-resource",
+ "serde_json",
  "sha2",
  "windows",
  "windows-sys",
@@ -480,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "yasno-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde_json",
  "unicode-general-category",

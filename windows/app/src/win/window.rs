@@ -8,7 +8,7 @@ use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPAR
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::HiDpi::GetDpiForSystem;
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus};
 
 const SS_RIGHT: u32 = 2;
 const SS_ETCHEDHORZ: u32 = 16;
@@ -18,6 +18,7 @@ use super::{settings, update, wide, with_app};
 
 const MAIN_CLASS: &str = "YasnoSettings";
 const EXCEPTIONS_CLASS: &str = "YasnoExceptions";
+const DIAGNOSTICS_CLASS: &str = "YasnoDiagnostics";
 
 const ID_STATUS: i32 = 100;
 const ID_ENABLED: i32 = 101;
@@ -30,6 +31,19 @@ const ID_CHECK: i32 = 107;
 const ID_UPDATE_TEXT: i32 = 108;
 const ID_DETAIL: i32 = 109;
 const ID_COUNT: i32 = 110;
+const ID_DIAGNOSTICS: i32 = 111;
+const ID_D_TITLE: i32 = 140;
+const ID_D_STATUS: i32 = 141;
+const ID_D_TOGGLE: i32 = 142;
+const ID_D_SHOW: i32 = 143;
+const ID_D_SEND: i32 = 144;
+const ID_D_REPO_LABEL: i32 = 145;
+const ID_D_REPO: i32 = 146;
+const ID_D_REPLACE: i32 = 147;
+const ID_D_TOKEN: i32 = 148;
+const ID_D_SAVE: i32 = 149;
+const ID_D_DONE: i32 = 150;
+const ID_D_GITHUB: i32 = 151;
 const ID_WORDS: i32 = 200;
 const ID_APPS: i32 = 201;
 const ID_REMOVE: i32 = 202;
@@ -43,6 +57,7 @@ const ID_GREY: i32 = 300;
 struct Ui {
     main: Option<HWND>,
     exceptions: Option<HWND>,
+    diagnostics: Option<HWND>,
     font: HFONT,
     bold: HFONT,
     title: HFONT,
@@ -160,7 +175,7 @@ pub fn show() {
     }
     fonts();
     register(MAIN_CLASS, Some(main_proc));
-    let hwnd = window(MAIN_CLASS, "Ясно", WIDTH, 560, std::ptr::null_mut());
+    let hwnd = window(MAIN_CLASS, "Ясно", WIDTH, 630, std::ptr::null_mut());
     UI.with(|u| u.borrow_mut().main = Some(hwnd));
     let x = 24;
     let inner = WIDTH - 2 * x;
@@ -193,10 +208,13 @@ pub fn show() {
     button(hwnd, "Проверить сейчас", WIDTH - x - 150, y - 2, 150, ID_CHECK);
     label(hwnd, "", x + 20, y + 26, inner - 20, 34, ID_UPDATE_TEXT + ID_GREY, 3);
     y += 66;
+    label(hwnd, "", x, y + 4, inner - 160, 20, ID_GREY + 32, 0);
+    button(hwnd, "Диагностика…", WIDTH - x - 150, y, 150, ID_DIAGNOSTICS);
+    y += 40;
     label(hwnd, "", x, y, inner, 34, ID_DETAIL + ID_GREY, 3);
     y += 40;
-    label(hwnd, "На вашем компьютере · без истории ввода", x, y, 300, 18, ID_GREY + 30, 3);
-    control(hwnd, "STATIC", "", SS_RIGHT, WIDTH - x - 160, y, 160, 18, ID_COUNT + ID_GREY, 3);
+    label(hwnd, "На вашем компьютере · ввод записывается только в диагностике", x, y, 320, 18, ID_GREY + 30, 3);
+    control(hwnd, "STATIC", "", SS_RIGHT, WIDTH - x - 110, y, 110, 18, ID_COUNT + ID_GREY, 3);
     refresh();
     unsafe {
         ShowWindow(hwnd, SW_SHOW);
@@ -206,10 +224,15 @@ pub fn show() {
 
 /// Bring the window up to date with the app, if it is open.
 pub fn refresh() {
+    refresh_diagnostics();
     let Some(main) = UI.with(|u| u.borrow().main) else { return };
     let Some(state) = with_app(|a| (a.status(), a.monitoring(), a.settings.paused, a.layout_names(), a.settings.correct_spelling,
                                      a.settings.automatic_updates, a.update_message.clone(), a.update_busy,
                                      a.detail.clone(), a.corrections(), a.switch_failed())) else { return };
+    if let Some(d) = with_app(|a| a.diagnostic.clone()) {
+        let text = if d.enabled { format!("Диагностика ввода включена · событий: {}", d.events) } else { "Диагностика ввода выключена".into() };
+        set_text(main, ID_GREY + 32, &text);
+    }
     let (status, monitoring, paused, layouts, spelling, automatic, message, busy, detail, count, switch_failed) = state;
     let status = if monitoring { format!("●  {status}") } else { format!("○  {status}") };
     set_text(main, ID_STATUS, &status);
@@ -229,8 +252,9 @@ pub fn refresh() {
 }
 
 pub fn close() {
-    let (main, exceptions) = UI.with(|u| { let u = u.borrow(); (u.main, u.exceptions) });
+    let (main, exceptions, diagnostics) = UI.with(|u| { let u = u.borrow(); (u.main, u.exceptions, u.diagnostics) });
     unsafe {
+        if let Some(h) = diagnostics { DestroyWindow(h); }
         if let Some(h) = exceptions { DestroyWindow(h); }
         if let Some(h) = main { DestroyWindow(h); }
     }
@@ -238,8 +262,8 @@ pub fn close() {
 
 /// Tab and Enter move between controls of Yasno's windows.
 pub fn dialog_message(msg: &MSG) -> bool {
-    let (main, exceptions) = UI.with(|u| { let u = u.borrow(); (u.main, u.exceptions) });
-    for h in [exceptions, main].into_iter().flatten() {
+    let (main, exceptions, diagnostics) = UI.with(|u| { let u = u.borrow(); (u.main, u.exceptions, u.diagnostics) });
+    for h in [diagnostics, exceptions, main].into_iter().flatten() {
         if unsafe { IsDialogMessageW(h, msg) } != 0 { return true; }
     }
     false
@@ -276,6 +300,7 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam
                 ID_AUTOUPDATE => super::set_automatic_updates(checked(hwnd, ID_AUTOUPDATE)),
                 ID_CHECK => super::check_for_updates(false),
                 ID_EXCEPTIONS => show_exceptions(hwnd),
+                ID_DIAGNOSTICS => show_diagnostics(),
                 _ => return 0,
             }
             refresh();
@@ -368,6 +393,103 @@ unsafe extern "system" fn exceptions_proc(hwnd: HWND, msg: u32, wparam: WPARAM, 
             save_exceptions(hwnd);
             UI.with(|u| u.borrow_mut().exceptions = None);
             refresh();
+            0
+        }
+        _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+    }
+}
+
+/// The diagnostics window: on and off, the journals, the repository and the token.
+pub fn show_diagnostics() {
+    if let Some(h) = UI.with(|u| u.borrow().diagnostics) { unsafe { ShowWindow(h, SW_RESTORE); SetForegroundWindow(h); } return; }
+    fonts();
+    register(DIAGNOSTICS_CLASS, Some(diagnostics_proc));
+    let width = 460;
+    let owner = UI.with(|u| u.borrow().main).unwrap_or(std::ptr::null_mut());
+    let hwnd = window(DIAGNOSTICS_CLASS, "Диагностика ввода", width, 560, owner);
+    UI.with(|u| u.borrow_mut().diagnostics = Some(hwnd));
+    let x = 24;
+    let inner = width - 2 * x;
+    label(hwnd, "Диагностика ввода", x, 18, inner, 22, ID_D_TITLE, 1);
+    label(hwnd, "Если в каком-то поле Ясно не переключает слова: включите диагностику, напечатайте там несколько слов \
+                 не в той раскладке с пробелом после каждого и выключите её. Журнал покажет, что Ясно решило для каждого слова.",
+          x, 44, inner, 52, ID_GREY + 50, 3);
+    label(hwnd, "", x, 108, inner - 140, 22, ID_D_STATUS, 0);
+    button(hwnd, "", width - x - 130, 104, 130, ID_D_TOGGLE);
+    button(hwnd, "Показать журналы", x, 142, 170, ID_D_SHOW);
+    button(hwnd, "", x + 180, 142, 150, ID_D_SEND);
+    label(hwnd, "", x, 180, inner, 54, ID_GREY + 51, 3);
+    control(hwnd, "STATIC", "", SS_ETCHEDHORZ, x, 242, inner, 2, 152, 0);
+    label(hwnd, "Отправка на GitHub", x, 254, inner, 20, ID_D_GITHUB, 1);
+    label(hwnd, "Журналы отправляются только в приватный репозиторий. Без токена они остаются на этом компьютере.",
+          x, 278, inner, 34, ID_GREY + 52, 3);
+    label(hwnd, "Репозиторий", x, 324, 100, 20, ID_D_REPO_LABEL, 0);
+    control(hwnd, "EDIT", "", WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL as u32, x + 104, 320, inner - 104, 26, ID_D_REPO, 0);
+    label(hwnd, "", x, 358, inner, 18, ID_GREY + 53, 3);
+    checkbox(hwnd, "Заменить токен", x, 380, inner, ID_D_REPLACE);
+    control(hwnd, "EDIT", "", WS_BORDER | WS_TABSTOP | (ES_AUTOHSCROLL | ES_PASSWORD) as u32, x, 408, inner, 26, ID_D_TOKEN, 0);
+    label(hwnd, "Fine-grained токен с доступом только к этому репозиторию: Contents — Read and write. \
+                 Хранится зашифрованным для вашей учётной записи Windows. Пустое поле удаляет токен.",
+          x, 440, inner, 52, ID_GREY + 54, 3);
+    button(hwnd, "Сохранить", width - x - 220, 510, 110, ID_D_SAVE);
+    button(hwnd, "Готово", width - x - 100, 510, 100, ID_D_DONE);
+    if let Some(repo) = with_app(|a| a.settings.diagnostic_repo.clone()) {
+        unsafe { SetWindowTextW(item(hwnd, ID_D_REPO), wide(&repo).as_ptr()); }
+    }
+    unsafe { EnableWindow(item(hwnd, ID_D_TOKEN), 0); }
+    refresh_diagnostics();
+    unsafe { ShowWindow(hwnd, SW_SHOW); SetForegroundWindow(hwnd); }
+}
+
+fn refresh_diagnostics() {
+    let Some(hwnd) = UI.with(|u| u.borrow().diagnostics) else { return };
+    let Some(d) = with_app(|a| a.diagnostic.clone()) else { return };
+    let status = if d.enabled { format!("●  Включена · событий: {}", d.events) } else { "○  Выключена".into() };
+    set_text(hwnd, ID_D_STATUS, &status);
+    set_text(hwnd, ID_D_TOGGLE, if d.enabled { "Выключить" } else { "Включить…" });
+    set_text(hwnd, ID_D_SEND, &if d.busy { "Отправляю…".to_string() } else { format!("Отправить ({})", d.queued) });
+    unsafe { EnableWindow(item(hwnd, ID_D_SEND), (d.queued > 0 && !d.busy && d.can_send()) as i32); }
+    set_text(hwnd, ID_GREY + 51, &d.message);
+    set_text(hwnd, ID_GREY + 53, if d.has_token { "Токен сохранён." } else { "Токен не указан." });
+}
+
+unsafe extern "system" fn diagnostics_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    match msg {
+        WM_CTLCOLORSTATIC | WM_CTLCOLORBTN => ctl_color(wparam, lparam),
+        WM_COMMAND => {
+            match (wparam & 0xffff) as i32 {
+                ID_D_TOGGLE => super::toggle_diagnostics(hwnd),
+                ID_D_SHOW => super::open_journals(),
+                ID_D_SEND => super::send_journals(),
+                ID_D_REPLACE => {
+                    let on = checked(hwnd, ID_D_REPLACE);
+                    EnableWindow(item(hwnd, ID_D_TOKEN), on as i32);
+                    if on { SetFocus(item(hwnd, ID_D_TOKEN)); }
+                }
+                ID_D_SAVE => {
+                    let repo = get_text(item(hwnd, ID_D_REPO));
+                    let token = checked(hwnd, ID_D_REPLACE).then(|| get_text(item(hwnd, ID_D_TOKEN)));
+                    match super::save_diagnostic_settings(&repo, token.as_deref()) {
+                        Some(problem) => set_text(hwnd, ID_GREY + 51, problem),
+                        None => {
+                            SetWindowTextW(item(hwnd, ID_D_TOKEN), wide("").as_ptr());
+                            set_check(hwnd, ID_D_REPLACE, false);
+                            EnableWindow(item(hwnd, ID_D_TOKEN), 0);
+                        }
+                    }
+                    return 0;
+                }
+                ID_D_DONE => { DestroyWindow(hwnd); return 0; }
+                _ => return 0,
+            }
+            refresh();
+            0
+        }
+        WM_CLOSE => { DestroyWindow(hwnd); 0 }
+        WM_DESTROY => {
+            // The token typed and not saved is wiped from the control before it goes.
+            SetWindowTextW(item(hwnd, ID_D_TOKEN), wide("").as_ptr());
+            UI.with(|u| u.borrow_mut().diagnostics = None);
             0
         }
         _ => DefWindowProcW(hwnd, msg, wparam, lparam),

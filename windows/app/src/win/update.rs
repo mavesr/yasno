@@ -18,8 +18,9 @@ impl Drop for Handle {
     fn drop(&mut self) { if !self.0.is_null() { unsafe { WinHttpCloseHandle(self.0); } } }
 }
 
-/// An HTTPS GET through WinHTTP: the system proxy settings and certificate store apply.
-pub fn get(url: &str) -> Result<Vec<u8>, String> {
+/// An HTTPS request through WinHTTP: the system proxy settings and certificate store apply.
+/// `headers` are extra header lines, each ending in CRLF. Returns the status and the body.
+pub fn request(method: &str, url: &str, headers: &str, body: Option<&[u8]>) -> Result<(u32, Vec<u8>), String> {
     let rest = url.strip_prefix("https://").ok_or("not https")?;
     let (host, path) = rest.split_once('/').map(|(h, p)| (h, format!("/{p}"))).unwrap_or((rest, "/".into()));
     unsafe {
@@ -29,11 +30,12 @@ pub fn get(url: &str) -> Result<Vec<u8>, String> {
         WinHttpSetTimeouts(session.0, 15_000, 15_000, 30_000, 60_000);
         let connection = Handle(WinHttpConnect(session.0, wide(host).as_ptr(), 443, 0));
         if connection.0.is_null() { return Err("connect".into()); }
-        let request = Handle(WinHttpOpenRequest(connection.0, wide("GET").as_ptr(), wide(&path).as_ptr(), std::ptr::null(),
+        let request = Handle(WinHttpOpenRequest(connection.0, wide(method).as_ptr(), wide(&path).as_ptr(), std::ptr::null(),
                                                 std::ptr::null(), std::ptr::null(), WINHTTP_FLAG_SECURE));
         if request.0.is_null() { return Err("request".into()); }
-        let headers = wide("Accept: application/vnd.github+json, application/octet-stream\r\n");
-        if WinHttpSendRequest(request.0, headers.as_ptr(), u32::MAX, std::ptr::null(), 0, 0, 0) == 0
+        let headers = wide(headers);
+        let (data, length) = body.map_or((std::ptr::null(), 0), |b| (b.as_ptr() as *const core::ffi::c_void, b.len() as u32));
+        if WinHttpSendRequest(request.0, headers.as_ptr(), u32::MAX, data, length, length, 0) == 0
             || WinHttpReceiveResponse(request.0, std::ptr::null_mut()) == 0 {
             return Err("нет связи с GitHub".into());
         }
@@ -41,7 +43,6 @@ pub fn get(url: &str) -> Result<Vec<u8>, String> {
         let mut size = 4u32;
         WinHttpQueryHeaders(request.0, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, std::ptr::null(),
                             &mut status as *mut u32 as *mut _, &mut size, std::ptr::null_mut());
-        if status != 200 { return Err(format!("HTTP {status}")); }
         let mut body = Vec::new();
         let mut buf = vec![0u8; 64 * 1024];
         loop {
@@ -51,8 +52,15 @@ pub fn get(url: &str) -> Result<Vec<u8>, String> {
             body.extend_from_slice(&buf[..read as usize]);
             if body.len() > 64 * 1024 * 1024 { return Err("too large".into()); }
         }
-        Ok(body)
+        Ok((status, body))
     }
+}
+
+/// An HTTPS GET that must answer 200.
+pub fn get(url: &str) -> Result<Vec<u8>, String> {
+    let (status, body) = request("GET", url, "Accept: application/vnd.github+json, application/octet-stream\r\n", None)?;
+    if status != 200 { return Err(format!("HTTP {status}")); }
+    Ok(body)
 }
 
 pub fn newest() -> Result<Option<Release>, String> {

@@ -134,6 +134,8 @@ final class AppModel: ObservableObject {
             self.refresh()
             self.lastActivation = started
             Trace.switching.info("activated pid=\(pid) previous=\(previous) lookup=\(lookup) ms handled=\(Trace.milliseconds(since: started)) ms")
+            Diagnostics.note("app", ["app": Diagnostics.application(pid), "previous_pid": Int(previous),
+                                     "monitoring": self.monitor.enabled, "status": self.status])
         }
         // Caramba is tracked by launch/termination notifications instead of enumerating
         // all running applications on every refresh.
@@ -267,6 +269,7 @@ final class AppModel: ObservableObject {
         monitor.enabled = enabled && !carambaRunning && accessibility && inputMonitoring && !secureInput && !excluded && layouts.count >= 2 && !monitor.faulted
         if monitor.enabled != wasMonitoring {
             Trace.switching.info("monitor enabled=\(self.monitor.enabled) status=\(nextStatus, privacy: .public) pid=\(self.activePID)")
+            Diagnostics.note("monitor", ["enabled": monitor.enabled, "status": nextStatus, "pid": Int(activePID)])
         }
         if lastSource.isEmpty { lastSource = KeyboardLayout.currentID() }
         let state = MenuState(status: status, enabled: enabled, monitoring: monitor.enabled, layouts: layoutNames)
@@ -324,6 +327,8 @@ final class AppModel: ObservableObject {
             let pending = model.monitor.pendingCount
             model.monitor.focusChanged()
             Trace.switching.info("focus notification \(notification as String, privacy: .public) windowOnly=\(sameElement) sinceActivation=\(Trace.milliseconds(since: model.lastActivation)) ms keysKept=\(pending)")
+            if sameElement { Diagnostics.note("focus_window", ["pid": Int(model.observedPID), "keys_kept": pending]) }
+            else { Diagnostics.noteField("focus", element: element, pid: model.observedPID, extra: ["keys_kept": pending]) }
         }
         guard AXObserverCreate(pid, callback, &observer) == .success, let observer else { return }
         let app = AXUIElementCreateApplication(pid)
@@ -398,13 +403,25 @@ final class AppModel: ObservableObject {
     }
 
     private func process(_ token: KeyboardMonitor.Token, whileTyping: Bool = false, paused: Bool = false) {
-        if !whileTyping { cancelTypingTask() }
+        if !whileTyping {
+            cancelTypingTask()
+            Diagnostics.note("word", Self.diagnostic(token, live: false))
+        }
         if token.liveConverted {
             updateLiveReceipt(token)
-            if whileTyping || !correctSpelling { return }
+            if whileTyping || !correctSpelling {
+                if !whileTyping { Diagnostics.note("skipped", Self.diagnostic(token, live: false, ["reason": "already converted while typed"])) }
+                return
+            }
         } else { receipt = nil }
         guard monitor.enabled, monitor.revision == token.revision,
-              let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
+              let source = layouts.first(where: { $0.id == token.sourceID }) else {
+            if !whileTyping {
+                let reason = !monitor.enabled ? "monitor off" : monitor.revision != token.revision ? "newer input" : "layout not enabled"
+                Diagnostics.note("skipped", Self.diagnostic(token, live: false, ["reason": reason]))
+            }
+            return
+        }
         guard whileTyping else { correct(token, whileTyping: false); return }
         // Typing pauses are frequent and almost always negative, so check before
         // gating: a negative result never holds input. A key typed meanwhile changes
@@ -414,6 +431,15 @@ final class AppModel: ObservableObject {
             guard monitor.revision == token.revision, detector.mayCorrect(request) else { return }
             DispatchQueue.main.async { self.correct(token, whileTyping: true, paused: paused) }
         }
+    }
+
+    /// The word as the journal shows it in every event about it.
+    static func diagnostic(_ token: KeyboardMonitor.Token, live: Bool, _ extra: [String: Any] = [:]) -> [String: Any] {
+        var fields: [String: Any] = ["text": token.text, "suffix": token.suffix, "layout": token.sourceID,
+                                     "pid": Int(token.pid), "live": live, "focus_moved": token.focusMoved,
+                                     "live_converted": token.liveConverted]
+        fields.merge(extra) { _, new in new }
+        return fields
     }
 
     private func request(for token: KeyboardMonitor.Token, source: KeyboardLayout, whileTyping: Bool,
@@ -432,27 +458,41 @@ final class AppModel: ObservableObject {
               let source = layouts.first(where: { $0.id == token.sourceID }) else { return }
         let request = self.request(for: token, source: source, whileTyping: whileTyping, paused: paused)
         // A gate opened before the dictionaries are parsed would hold input behind the load.
-        guard detectorLoaded.withLock({ $0 }) else { return }
+        guard detectorLoaded.withLock({ $0 }) else {
+            Diagnostics.note("skipped", Self.diagnostic(token, live: whileTyping, ["reason": "dictionaries still loading"]))
+            return
+        }
         // Reserve before returning to the event stream, including replayed Space.
         // All dictionary/spelling work runs on the worker; negative results release
         // the gate without touching AX or doing browser IPC.
-        guard monitor.beginGate(revision: token.revision) else { return }
+        guard monitor.beginGate(revision: token.revision) else {
+            Diagnostics.note("skipped", Self.diagnostic(token, live: whileTyping, ["reason": "another edit in progress"]))
+            return
+        }
         worker.async { [self] in
             defer { DispatchQueue.main.async { self.monitor.endGate(revision: token.revision) } }
             guard self.monitor.revision == token.revision else { return }
             // Live ticks were checked with mayCorrect before the gate.
-            guard whileTyping || self.detector.mayCorrect(request) else { return }
+            guard whileTyping || self.detector.mayCorrect(request) else {
+                Diagnostics.note("no_suggestion", Self.diagnostic(token, live: false, ["reason": "dictionaries see no other layout",
+                                                                                      "spelling": self.correctSpelling]))
+                return
+            }
             let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
             let lookupStart = ProcessInfo.processInfo.systemUptime
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else {
                 Trace.correction.info("no focused field pid=\(token.pid) live=\(whileTyping) after \(Trace.milliseconds(since: lookupStart)) ms")
+                if self.monitor.revision == token.revision {
+                    Diagnostics.noteFocusLookup("no_field", pid: token.pid, extra: Self.diagnostic(token, live: whileTyping))
+                }
                 return
             }
             let lookup = Trace.milliseconds(since: lookupStart)
             let canvasStart = ProcessInfo.processInfo.systemUptime
             if editor.isCanvasTypingTarget {
                 Trace.correction.info("canvas field pid=\(token.pid) live=\(whileTyping) focusMoved=\(token.focusMoved) lookup=\(lookup) ms canvas=\(Trace.milliseconds(since: canvasStart)) ms")
+                Diagnostics.note("canvas", Self.diagnostic(token, live: whileTyping, ["edit": token.focusMoved ? "none: focus moved" : "keystrokes"]))
                 // Nothing can be read back here, and the focus moved while the word was typed.
                 guard !token.focusMoved else { return }
                 self.correctByKeystrokes(token, request: request, source: source, editor: editor, whileTyping: whileTyping)
@@ -471,6 +511,7 @@ final class AppModel: ObservableObject {
             // typed would stay in the old layout. Correct it only once typing has stopped.
             if whileTyping, !settled, inPanel() {
                 Trace.correction.info("live correction deferred pid=\(token.pid): keys go to a panel")
+                Diagnostics.note("deferred", Self.diagnostic(token, live: true, ["reason": "keys go to an Open/Save panel"]))
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     guard self.monitor.revision == token.revision else { return }
                     self.correct(token, whileTyping: true, settled: true, paused: paused)
@@ -480,6 +521,7 @@ final class AppModel: ObservableObject {
             if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
                ProcessInfo.processInfo.systemUptime < blocked.until {
                 Trace.correction.info("live correction skipped pid=\(token.pid): field blocked for \(Int(blocked.until - ProcessInfo.processInfo.systemUptime)) s more")
+                Diagnostics.note("skipped", Self.diagnostic(token, live: true, ["reason": "live corrections blocked in this field after a caret timeout"]))
                 return
             }
             let suffix = token.text + token.suffix
@@ -490,6 +532,12 @@ final class AppModel: ObservableObject {
                 stillValid: { self.monitor.revision == token.revision }) else {
                 let stale = self.monitor.revision != token.revision
                 Trace.correction.info("no caret pid=\(token.pid) live=\(whileTyping) stale=\(stale) lookup=\(lookup) ms canvas=\(canvas) ms wait=\(Trace.milliseconds(since: caretStart)) ms")
+                if !stale {
+                    let next = token.focusMoved ? "none: focus moved" : editor.exposesNoText ? "keystrokes: field shows no text"
+                        : whileTyping ? "live corrections blocked for 30 s" : "none"
+                    Diagnostics.noteField("no_caret", element: editor.element, pid: token.pid, extra: Self.diagnostic(token, live: whileTyping, [
+                        "expected_before_caret": suffix, "waited_ms": Trace.milliseconds(since: caretStart), "next": next]))
+                }
                 // The focus moved while the word was typed: the field may simply not hold it.
                 guard !stale, !token.focusMoved else { return }
                 // Another editor drawn on a canvas: the field still shows nothing typed.
@@ -511,15 +559,28 @@ final class AppModel: ObservableObject {
             // If a context window cannot be read, do not assume it is a word boundary.
             if suffixRange.location > 0 {
                 guard let left = editor.text(in: CFRange(location: suffixRange.location - 1, length: 1)),
-                      TextSafety.hasLeftBoundary(left) else { return }
+                      TextSafety.hasLeftBoundary(left) else {
+                    Diagnostics.note("skipped", Self.diagnostic(token, live: whileTyping, [
+                        "reason": "the word continues to the left of what was typed", "context_tail": String(context.suffix(20))]))
+                    return
+                }
             }
-            guard let suggestion = self.detector.correction(request, context: context) else { return }
+            guard let suggestion = self.detector.correction(request, context: context) else {
+                Diagnostics.note("no_suggestion", Self.diagnostic(token, live: whileTyping, [
+                    "reason": "no correction in context", "context_tail": String(context.suffix(40))]))
+                return
+            }
             let range = CFRange(location: suffixRange.location, length: token.text.utf16.count)
             let result = editor.replace(range: range, expected: token.text, replacement: suggestion.replacement,
                                         caret: caret, stillValid: { self.monitor.revision == token.revision && !IsSecureEventInputEnabled() },
                                         commit: { self.monitor.commitGate(revision: token.revision) }, deadline: deadline, receiver: receiver())
             let panel = inPanel()
             Trace.correction.info("edit pid=\(token.pid) live=\(whileTyping) result=\(String(describing: result), privacy: .public) total=\(Trace.milliseconds(since: lookupStart)) ms")
+            let edit = Self.diagnostic(token, live: whileTyping, [
+                "result": String(describing: result), "replacement": suggestion.replacement, "target": suggestion.target.id,
+                "panel": panel, "total_ms": Trace.milliseconds(since: lookupStart)])
+            if case .success = result { Diagnostics.note("edit", edit) }
+            else { Diagnostics.noteField("edit", element: editor.element, pid: token.pid, extra: edit) }
             DispatchQueue.main.async {
                 self.handle(result, editor: editor, range: range, caret: caret, original: token.text,
                             replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target, live: whileTyping, panel: panel)
@@ -531,13 +592,24 @@ final class AppModel: ObservableObject {
     /// only what this token typed and keeps the text before it unread and untouched.
     private func correctByKeystrokes(_ token: KeyboardMonitor.Token, request: CorrectionRequest, source: KeyboardLayout,
                                      editor: AccessibleEditor, whileTyping: Bool) {
-        guard let suggestion = detector.correction(request, context: ""),
-              let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source,
+        guard let suggestion = detector.correction(request, context: "") else {
+            Diagnostics.note("no_suggestion", Self.diagnostic(token, live: whileTyping, ["reason": "no correction", "edit": "keystrokes"]))
+            return
+        }
+        guard let edit = Self.keystrokeEdit(for: token, suggestion: suggestion, source: source,
                                             blind: AccessibleEditor.blind || editor.showsRemoteScreen),
               monitor.revision == token.revision, !IsSecureEventInputEnabled(),
-              monitor.commitGate(revision: token.revision) else { return }
+              monitor.commitGate(revision: token.revision) else {
+            Diagnostics.note("skipped", Self.diagnostic(token, live: whileTyping, [
+                "reason": "keystroke edit refused (same layout, focus moved, one letter blind, or newer input)",
+                "replacement": suggestion.replacement, "target": suggestion.target.id]))
+            return
+        }
         let typed = editor.showsRemoteScreen ? typeOnRemoteScreen(edit, in: suggestion.target) : KeyboardMonitor.typeKeystrokes(edit)
         let result: AccessibleEditor.EditResult = typed ? .success : .failed
+        Diagnostics.note("edit", Self.diagnostic(token, live: whileTyping, [
+            "result": String(describing: result), "edit": "keystrokes", "replacement": suggestion.replacement,
+            "target": suggestion.target.id, "remote_screen": editor.showsRemoteScreen]))
         DispatchQueue.main.async {
             self.handle(result, editor: editor, range: CFRange(), caret: CFRange(), original: token.text,
                         replacement: suggestion.replacement, sourceID: source.id, target: suggestion.target,
@@ -604,7 +676,10 @@ final class AppModel: ObservableObject {
             if AccessibleEditor.typingApplication()?.processIdentifier == editor.pid, !panel {
                 if cycle != nil {
                     guard selectManually(target, bundleID: NSRunningApplication(processIdentifier: editor.pid)?.bundleIdentifier) else { return }
-                } else if !selectLayout(target) { detail = "Текст исправлен, но раскладку переключить не удалось."; return }
+                } else if !selectLayout(target) {
+                    Diagnostics.note("layout_not_selected", ["target": target.id, "pid": Int(editor.pid)])
+                    detail = "Текст исправлен, но раскладку переключить не удалось."; return
+                }
                 if live {
                     monitor.resumeAfterLiveCorrection(text: replacement, sourceID: target.id, pid: editor.pid)
                 }

@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusLabel: NSMenuItem!
     private var pauseItem: NSMenuItem!
     private var diagnostics: DiagnosticService!
-    private var diagnosticItem: NSMenuItem!
+    private var diagnosticItem: NSMenuItem?
     private var diagnosticWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         diagnostics.onChange = { [weak self] in
             guard let self else { return }
-            self.diagnosticItem.title = self.diagnostics.enabled ? "Выключить диагностику ✓" : "Включить диагностику ввода"
+            self.diagnosticItem?.title = self.diagnostics.enabled ? "Выключить диагностику ✓" : "Включить диагностику ввода"
         }
         diagnostics.onMessage = { text in
             let alert = NSAlert()
@@ -63,9 +63,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         add("Не работать в этом приложении", action: #selector(excludeApp), to: menu)
         if updater.available { add("Проверить обновления", action: #selector(checkForUpdates), to: menu) }
         menu.addItem(.separator())
-        diagnosticItem = add("Включить диагностику ввода", action: #selector(toggleDiagnostics), to: menu)
-        add("Настройки диагностики…", action: #selector(showDiagnostics), to: menu)
-        menu.addItem(.separator())
+        // The App Store edition cannot see fields, so a journal there would hold only typed words.
+        if !AccessibleEditor.blind {
+            diagnosticItem = add("Включить диагностику ввода", action: #selector(toggleDiagnostics), to: menu)
+            add("Настройки диагностики…", action: #selector(showDiagnostics), to: menu)
+            menu.addItem(.separator())
+        }
         add("Завершить Ясно", action: #selector(quit), to: menu)
         statusItem.menu = menu
         model.onStateChange = { [weak self] in

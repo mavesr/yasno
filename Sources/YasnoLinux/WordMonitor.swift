@@ -47,15 +47,23 @@ public final class WordMonitor {
 
     func syncSource(_ id: String) {
         guard sourceID != id else { return }
-        reset(); sourceID = id
+        reset(reason: "layout changed", ["new_layout": id]); sourceID = id
     }
 
     func syncApplication(_ id: String) {
         guard app != id else { return }
-        reset(); app = id
+        reset(reason: "application changed", ["new_app": id]); app = id
     }
 
-    func reset() {
+    /// The word being typed is given up; the journal says why.
+    private func drop(_ reason: String, _ extra: [String: Any] = [:]) {
+        guard !token.isEmpty else { return }
+        Diagnostics.note("word_dropped", ["reason": reason, "text": token, "layout": sourceID, "app": app]
+            .merging(extra) { _, new in new })
+    }
+
+    func reset(reason: String = "reset", _ extra: [String: Any] = [:]) {
+        drop(reason, extra)
         _ = hub.bump()
         token = ""; physicalKeys = []; completedToken = nil; liveConverted = false; composing = false; shiftGesture.reset()
         onCancelAnalysis?()
@@ -82,7 +90,7 @@ public final class WordMonitor {
     func receive(_ event: InputEvent) {
         if event.source == .pointer {
             guard event.isKey else { return }
-            if event.value == 1 { reset() } else { shiftGesture.cancel() }
+            if event.value == 1 { reset(reason: "mouse click") } else { shiftGesture.cancel() }
             return
         }
         let code = event.code
@@ -92,7 +100,7 @@ public final class WordMonitor {
         }
         if event.value == 0 && !KeyCodes.modifiers.contains(code) { return }
         if token.isEmpty, event.value == 1, !KeyCodes.modifiers.contains(code) { onWordStart?() }
-        guard enabled, !secureInput() else { reset(); return }
+        guard enabled, !secureInput() else { reset(reason: "monitoring off or password entry"); return }
         if code == KeyCodes.leftShift || code == KeyCodes.rightShift {
             guard event.value != 2 else { return }
             let key: UInt16 = code == KeyCodes.leftShift ? 56 : 60
@@ -122,9 +130,9 @@ public final class WordMonitor {
         let mac = KeyCodes.evdevToMac[code]
         let previous = completedToken
         if code != KeyCodes.space && !(code == KeyCodes.backspace && clean) { completedToken = nil }
-        guard clean else { token = ""; physicalKeys = []; onCancelAnalysis?(); return }
+        guard clean else { drop("shortcut with Ctrl, Alt or Super", ["key": Int(code)]); token = ""; physicalKeys = []; onCancelAnalysis?(); return }
         // The desktop repeats a held key itself; the kernel's repeat count is not what the field got.
-        if event.value == 2 { token = ""; physicalKeys = []; completedToken = nil; onCancelAnalysis?(); return }
+        if event.value == 2 { drop("held key repeated", ["key": Int(code)]); token = ""; physicalKeys = []; completedToken = nil; onCancelAnalysis?(); return }
         if code == KeyCodes.backspace {
             if !token.isEmpty {
                 token.removeLast()
@@ -151,6 +159,7 @@ public final class WordMonitor {
             onToken?(completed); return
         }
         if code == KeyCodes.tab || navigation.contains(code) {
+            drop("Enter, Escape or an arrow key", ["key": Int(code)])
             token = ""; physicalKeys = []; onCancelAnalysis?(); return
         }
         if code == KeyCodes.space {
@@ -167,13 +176,15 @@ public final class WordMonitor {
         let caps = hub.capsLock
         guard let mac, let layout = layouts.first(where: { $0.id == sourceID }),
               let string = layout.character(key: mac, shift: shift, capsLock: caps) else {
+            drop("key without a character in the layout", ["key": Int(code), "known_layout": layouts.contains { $0.id == sourceID }])
             token = ""; return
         }
         if composing || layout.isDeadKey(key: mac, shift: shift, capsLock: caps) {
+            drop("dead key", ["key": Int(code)])
             composing = true; token = ""; physicalKeys = []; onCancelAnalysis?(); return
         }
         guard !string.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              token.count + string.count <= 512 else { token = ""; return }
+              token.count + string.count <= 512 else { drop("control character or overlong word"); token = ""; return }
         token += string
         physicalKeys?.append(.init(key: mac, shift: shift, capsLock: caps))
         onProgress?(snapshot(revision: revision))

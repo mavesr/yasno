@@ -17,9 +17,12 @@ use super::{wide, with_app};
 
 pub static READY: AtomicBool = AtomicBool::new(false);
 static EDIT: AtomicIsize = AtomicIsize::new(0);
+static PASSWORD: AtomicIsize = AtomicIsize::new(0);
 static WINDOW: AtomicIsize = AtomicIsize::new(0);
 const WM_PREPARE: u32 = WM_APP + 40;
 const WM_STATE: u32 = WM_APP + 41;
+/// wparam: 1 start diagnostics, 0 stop them, 2 focus the password field, 3 the plain one.
+const WM_DIAGNOSE: u32 = WM_APP + 42;
 static STATE: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 
 const US: &str = "00000409";
@@ -39,10 +42,14 @@ pub fn create_window() {
         let wc = WNDCLASSW { lpfnWndProc: Some(proc_), hInstance: instance, lpszClassName: class.as_ptr(), ..std::mem::zeroed() };
         RegisterClassW(&wc);
         let hwnd = CreateWindowExW(WS_EX_TOPMOST, class.as_ptr(), wide("Ясно self-test").as_ptr(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                                   100, 100, 700, 300, std::ptr::null_mut(), std::ptr::null_mut(), instance, std::ptr::null());
+                                   100, 100, 700, 340, std::ptr::null_mut(), std::ptr::null_mut(), instance, std::ptr::null());
         let edit = CreateWindowExW(0, wide("EDIT").as_ptr(), wide("").as_ptr(),
                                    WS_CHILD | WS_VISIBLE | WS_BORDER | (ES_MULTILINE | ES_AUTOVSCROLL) as u32,
                                    10, 10, 660, 240, hwnd, std::ptr::null_mut(), instance, std::ptr::null());
+        let password = CreateWindowExW(0, wide("EDIT").as_ptr(), wide("").as_ptr(),
+                                       WS_CHILD | WS_VISIBLE | WS_BORDER | (ES_PASSWORD | ES_AUTOHSCROLL) as u32,
+                                       10, 260, 660, 28, hwnd, std::ptr::null_mut(), instance, std::ptr::null());
+        PASSWORD.store(password as isize, Ordering::SeqCst);
         WINDOW.store(hwnd as isize, Ordering::SeqCst);
         EDIT.store(edit as isize, Ordering::SeqCst);
         SetForegroundWindow(hwnd);
@@ -73,9 +80,23 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LP
                 .find(|l| l.id.ends_with(&format!("{:04X}", 0x419))).map(|l| l.id.clone()).unwrap_or_default()); });
             0
         }
+        WM_DIAGNOSE => {
+            match wparam {
+                1 => { with_app(|a| {
+                    let versions = serde_json::json!({"app": super::update::VERSION, "self_test": true});
+                    let session = a.session();
+                    let _ = a.diagnostics.send(super::diagnostics::Command::Start { versions, session });
+                }); }
+                0 => { with_app(|a| { let _ = a.diagnostics.send(super::diagnostics::Command::Stop { send: false, why: "self-test" }); }); }
+                2 => { SetFocus(PASSWORD.load(Ordering::SeqCst) as HWND); }
+                _ => { SetFocus(EDIT.load(Ordering::SeqCst) as HWND); }
+            }
+            0
+        }
         WM_STATE => {
-            let state = with_app(|a| format!("status={:?} monitoring={} corrections={} detail={:?}",
-                                             a.status(), a.monitoring(), a.corrections(), a.detail)).unwrap_or_default();
+            let state = with_app(|a| format!("status={:?} monitoring={} corrections={} detail={:?} diagnostics={}",
+                                             a.status(), a.monitoring(), a.corrections(), a.detail,
+                                             a.diagnostic.enabled)).unwrap_or_default();
             if let Ok(mut s) = STATE.lock() { *s = state; }
             0
         }
@@ -177,6 +198,74 @@ pub fn drive() -> (String, bool) {
                                case.keys, got, if pass { String::new() } else { format!(" (expected {:?})", case.expected) });
         }
     }
+    let (diagnostics, pass) = diagnostics_case(window);
+    report += &diagnostics;
+    ok &= pass;
+    (report, ok)
+}
+
+fn state(window: HWND) -> String {
+    unsafe { SendMessageW(window, WM_STATE, 0, 0); }
+    STATE.lock().map(|s| s.clone()).unwrap_or_default()
+}
+
+fn wait_for(window: HWND, diagnostics: bool) -> bool {
+    let want = format!("diagnostics={diagnostics}");
+    for _ in 0..50 {
+        if state(window).ends_with(&want) { return true; }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+/// A diagnostic session on this desktop: a word in the plain field is recorded with what
+/// Yasno did, nothing typed into the password field is, and the journal is closed and queued.
+fn diagnostics_case(window: HWND) -> (String, bool) {
+    let mut report = String::new();
+    let mut check = |name: &str, pass: bool, detail: String| {
+        report += &format!("{} diagnostics: {name}{}\n", if pass { "PASS" } else { "FAIL" }, if pass { String::new() } else { format!(" ({detail})") });
+        pass
+    };
+    let mut ok = check("token sealed for this user (DPAPI)", super::diagnostics::dpapi_works(), "CryptProtectData".into());
+    let queue = super::diagnostics::queue_folder();
+    let before: Vec<std::path::PathBuf> = std::fs::read_dir(&queue).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    unsafe { SendMessageW(window, WM_PREPARE, 0, hkl_of(US) as LPARAM); }
+    unsafe { SendMessageW(window, WM_DIAGNOSE, 1, 0); }
+    ok &= check("session starts", wait_for(window, true), state(window));
+    std::thread::sleep(Duration::from_millis(600));
+    press(&strokes("ghbdtn hello ", false), 40);
+    std::thread::sleep(Duration::from_millis(1500));
+    let typed = text();
+    unsafe { SendMessageW(window, WM_DIAGNOSE, 2, 0); }
+    std::thread::sleep(Duration::from_millis(800));
+    press(&strokes("zxcvbn ", false), 40);
+    std::thread::sleep(Duration::from_millis(800));
+    unsafe { SendMessageW(window, WM_DIAGNOSE, 3, 0); }
+    std::thread::sleep(Duration::from_millis(300));
+    unsafe { SendMessageW(window, WM_DIAGNOSE, 0, 0); }
+    ok &= check("session stops", wait_for(window, false), state(window));
+    std::thread::sleep(Duration::from_millis(500));
+    let journal = std::fs::read_dir(&queue).into_iter().flatten().flatten().map(|e| e.path())
+        .find(|p| !before.contains(p) && p.extension().is_some_and(|e| e == "jsonl"));
+    let Some(journal) = journal else {
+        ok &= check("journal queued", false, format!("nothing new in {}", queue.display()));
+        return (report, ok);
+    };
+    let content = std::fs::read_to_string(&journal).unwrap_or_default();
+    let rows: Vec<serde_json::Value> = content.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    let has = |event: &str, f: &dyn Fn(&serde_json::Value) -> bool| rows.iter().any(|r| r["event"] == event && f(r));
+    ok &= check("typed text corrected", typed == "привет hello ", format!("{typed:?}"));
+    ok &= check("meta rows", rows.first().is_some_and(|r| r["platform"] == "windows")
+                && rows.last().is_some_and(|r| r["closed_reason"] == "self-test"), format!("{} rows", rows.len()));
+    ok &= check("session event", has("session", &|r| r["layouts"].is_array()), String::new());
+    ok &= check("word recorded", has("word", &|r| r["text"] == "привет"), String::new());
+    ok &= check("edit recorded", has("edit", &|r| r["target"].as_str().is_some_and(|t| t.ends_with("0419"))), String::new());
+    ok &= check("password field seen", has("field", &|r| r["password"] == true), String::new());
+    let leaked = ["zxcvbn", "ячсмить"].iter().any(|w| content.contains(w));
+    ok &= check("password text not recorded", !leaked, "typed text found in the journal".into());
+    report += &format!("     journal: {} rows, {} bytes\n", rows.len(), content.len());
+    if !ok { for r in &rows { report += &format!("     {r}\n"); } }
+    let _ = std::fs::remove_file(&journal);
     (report, ok)
 }
 

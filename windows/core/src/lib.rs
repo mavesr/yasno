@@ -5,6 +5,7 @@
 
 pub mod chars;
 pub mod detector;
+pub mod diagnostics;
 pub mod engine;
 pub mod geometry;
 pub mod keystroke_edit;

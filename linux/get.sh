@@ -7,9 +7,16 @@ REPO=mavesr/yasno
 ARCH=$(uname -m)
 [ "$ARCH" = arm64 ] && ARCH=aarch64
 command -v curl >/dev/null 2>&1 || { echo "Нужен curl: sudo apt install curl"; exit 1; }
-TAG=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=50" \
-      | grep -o '"tag_name": *"linux-v[0-9.]*"' | head -n 1 | sed 's/.*"\(linux-v[0-9.]*\)"/\1/')
-[ -n "$TAG" ] || { echo "Не нашёл выпуск Ясно для Linux."; exit 1; }
+# The newest linux-v… release that has an archive for this processor.
+TAGS=$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=50" \
+      | grep -o '"tag_name": *"linux-v[0-9.]*"' | sed 's/.*"\(linux-v[0-9.]*\)"/\1/')
+TAG=
+for CANDIDATE in $TAGS; do
+  if curl -fsL -r 0-0 -o /dev/null "https://github.com/$REPO/releases/download/$CANDIDATE/yasno-linux-${CANDIDATE#linux-v}-$ARCH.tar.gz"; then
+    TAG=$CANDIDATE; break
+  fi
+done
+[ -n "$TAG" ] || { echo "Не нашёл выпуск Ясно для Linux ($ARCH)."; exit 1; }
 VERSION=${TAG#linux-v}
 NAME="yasno-linux-$VERSION-$ARCH"
 WORK=$(mktemp -d)

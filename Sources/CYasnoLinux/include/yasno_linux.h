@@ -60,6 +60,10 @@ typedef struct {
     int enabled, monitoring, spelling, login, automatic_updates, update_available, update_busy;
     int corrections;
     int can_exclude;
+    /* Input diagnostics (Diagnostics.swift). */
+    const char *diagnostic_message;
+    const char *diagnostic_repo;
+    int diagnostics, diagnostic_events, diagnostic_queued, diagnostic_token, diagnostic_busy;
 } yl_ui_state;
 
 typedef struct {
@@ -68,13 +72,18 @@ typedef struct {
     void (*ignored_changed)(const char *text);
     void (*remove_app)(const char *id);
     void (*started)(int background);
+    void (*diagnostic_save)(const char *repo, const char *token, int replace_token);
 } yl_ui_callbacks;
 
 enum { YL_ACTION_CHECK_UPDATES = 0, YL_ACTION_SETUP = 1, YL_ACTION_QUIT = 2, YL_ACTION_EXCLUDE = 3,
-       YL_ACTION_TOGGLE_PAUSE = 4, YL_ACTION_SHOW = 5 };
+       YL_ACTION_TOGGLE_PAUSE = 4, YL_ACTION_SHOW = 5, YL_ACTION_DIAGNOSTICS = 6, YL_ACTION_JOURNALS = 7,
+       YL_ACTION_SEND_JOURNALS = 8, YL_ACTION_SHOW_DIAGNOSTICS = 9 };
 
 int yl_ui_run(int argc, char **argv, const char *version, const yl_ui_callbacks *callbacks);
 void yl_ui_post_state(const yl_ui_state *state);
 void yl_ui_show(void);
+void yl_ui_show_diagnostics(void);
+/* GTK main thread only: a modal question; 1 when the person chose `ok`. */
+int yl_ui_confirm(const char *title, const char *text, const char *ok);
 void yl_ui_quit(void);
 #endif

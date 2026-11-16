@@ -26,6 +26,8 @@ pub struct Settings {
     pub last_update_check: Option<i64>,
     /// The Cyrillic layout chosen last (RU/UK ties).
     pub preferred: Option<String>,
+    /// The private repository diagnostic journals go to ("" keeps them here).
+    pub diagnostic_repo: String,
 }
 
 fn wide(s: &str) -> Vec<u16> { s.encode_utf16().chain(Some(0)).collect() }
@@ -74,7 +76,8 @@ impl Settings {
     pub fn load() -> Settings {
         let mut s = Settings { paused: false, correct_spelling: true,
                                exclusions: DEFAULT_EXCLUSIONS.iter().map(|s| s.to_string()).collect(), ignored_words: Vec::new(),
-                               automatic_updates: true, last_update_check: None, preferred: None };
+                               automatic_updates: true, last_update_check: None, preferred: None,
+                               diagnostic_repo: yasno_core::diagnostics::DEFAULT_REPO.to_string() };
         if let Some(key) = open(KEY) {
             if let Some(v) = get_dword(key, "Paused") { s.paused = v != 0; }
             if let Some(v) = get_dword(key, "CorrectSpelling") { s.correct_spelling = v != 0; }
@@ -83,6 +86,7 @@ impl Settings {
             if let Some(v) = get_dword(key, "AutomaticUpdates") { s.automatic_updates = v != 0; }
             s.last_update_check = get_string(key, "LastUpdateCheck").and_then(|v| v.parse().ok());
             s.preferred = get_string(key, "PreferredLayout").filter(|v| !v.is_empty());
+            if let Some(v) = get_string(key, "DiagnosticRepo") { s.diagnostic_repo = v.trim().to_string(); }
             unsafe { RegCloseKey(key); }
         }
         s
@@ -97,6 +101,7 @@ impl Settings {
             set_dword(key, "AutomaticUpdates", self.automatic_updates as u32);
             set_string(key, "LastUpdateCheck", &self.last_update_check.map(|v| v.to_string()).unwrap_or_default());
             set_string(key, "PreferredLayout", self.preferred.as_deref().unwrap_or(""));
+            set_string(key, "DiagnosticRepo", &self.diagnostic_repo);
             unsafe { RegCloseKey(key); }
         }
     }

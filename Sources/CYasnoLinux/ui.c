@@ -6,7 +6,9 @@ void yl_tray_start(const yl_ui_callbacks *callbacks);
 void yl_tray_update(const yl_ui_state *state);
 
 static GtkApplication *application;
-static GtkWidget *window, *exceptions_window;
+static GtkWidget *window, *exceptions_window, *diagnostics_window;
+static GtkWidget *diag_toggle, *diag_message, *diag_repo, *diag_token_label, *diag_replace, *diag_token, *diag_hint,
+                 *diag_save, *diag_send, *diag_events;
 static const yl_ui_callbacks *cb;
 static const char *app_version = "";
 static int background_launch;
@@ -28,6 +30,7 @@ static owned_state *copy_state(const yl_ui_state *in) {
     o->s.update_message = dup0(in->update_message); o->s.ignored_words = dup0(in->ignored_words);
     o->s.excluded_apps = dup0(in->excluded_apps); o->s.setup_hint = dup0(in->setup_hint);
     o->s.setup_button = dup0(in->setup_button);
+    o->s.diagnostic_message = dup0(in->diagnostic_message); o->s.diagnostic_repo = dup0(in->diagnostic_repo);
     return o;
 }
 
@@ -35,6 +38,7 @@ static void free_state(owned_state *o) {
     g_free((char *)o->s.status); g_free((char *)o->s.detail); g_free((char *)o->s.layouts);
     g_free((char *)o->s.update_message); g_free((char *)o->s.ignored_words); g_free((char *)o->s.excluded_apps);
     g_free((char *)o->s.setup_hint); g_free((char *)o->s.setup_button);
+    g_free((char *)o->s.diagnostic_message); g_free((char *)o->s.diagnostic_repo);
     g_free(o);
 }
 
@@ -115,6 +119,25 @@ static void apply_state(void) {
         g_free(text);
     }
     rebuild_apps(s->excluded_apps);
+    if (diagnostics_window) {
+        gtk_button_set_label(GTK_BUTTON(diag_toggle), s->diagnostics ? "Выключить диагностику" : "Включить диагностику");
+        gtk_label_set_text(GTK_LABEL(diag_message), s->diagnostic_message);
+        gtk_widget_set_visible(diag_message, s->diagnostic_message && *s->diagnostic_message);
+        if (!gtk_widget_has_focus(diag_repo) && strcmp(gtk_entry_get_text(GTK_ENTRY(diag_repo)), s->diagnostic_repo) != 0)
+            gtk_entry_set_text(GTK_ENTRY(diag_repo), s->diagnostic_repo);
+        gtk_label_set_text(GTK_LABEL(diag_token_label), s->diagnostic_token ? "Токен GitHub сохранён (только для вашей учётной записи)."
+                                                                            : "Токена нет: журналы остаются на этом компьютере.");
+        int busy = s->diagnostics || s->diagnostic_busy;
+        gtk_widget_set_sensitive(diag_repo, !busy);
+        gtk_widget_set_sensitive(diag_replace, !busy);
+        gtk_widget_set_sensitive(diag_save, !busy);
+        gchar *send = g_strdup_printf("Отправить (%d)", s->diagnostic_queued);
+        gtk_button_set_label(GTK_BUTTON(diag_send), send); g_free(send);
+        gtk_widget_set_visible(diag_send, s->diagnostic_queued > 0 && s->diagnostic_token && !busy);
+        gchar *events = g_strdup_printf("Записей: %d", s->diagnostic_events);
+        gtk_label_set_text(GTK_LABEL(diag_events), events); g_free(events);
+        gtk_widget_set_visible(diag_events, s->diagnostics);
+    }
     updating = 0;
 }
 
@@ -194,6 +217,96 @@ static void show_exceptions(GtkButton *button, gpointer data) {
     }
     gtk_widget_show_all(exceptions_window);
     gtk_window_present(GTK_WINDOW(exceptions_window));
+}
+
+static void replace_toggled(GtkToggleButton *button, gpointer data) {
+    (void)data;
+    int on = gtk_toggle_button_get_active(button);
+    gtk_widget_set_visible(diag_token, on);
+    gtk_widget_set_visible(diag_hint, on);
+}
+
+static void diagnostics_save(GtkButton *button, gpointer data) {
+    (void)button; (void)data;
+    int replace = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(diag_replace));
+    if (cb && cb->diagnostic_save) cb->diagnostic_save(gtk_entry_get_text(GTK_ENTRY(diag_repo)), gtk_entry_get_text(GTK_ENTRY(diag_token)), replace);
+    gtk_entry_set_text(GTK_ENTRY(diag_token), "");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(diag_replace), FALSE);
+}
+
+void yl_ui_show_diagnostics(void) {
+    if (!window) return;
+    if (!diagnostics_window) {
+        diagnostics_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+        gtk_window_set_title(GTK_WINDOW(diagnostics_window), "Диагностика ввода");
+        gtk_window_set_resizable(GTK_WINDOW(diagnostics_window), FALSE);
+        gtk_window_set_icon_name(GTK_WINDOW(diagnostics_window), "yasno");
+        gtk_window_set_default_size(GTK_WINDOW(diagnostics_window), 500, -1);
+        gtk_style_context_add_class(gtk_widget_get_style_context(diagnostics_window), "yasno");
+        g_signal_connect(diagnostics_window, "delete-event", G_CALLBACK(gtk_widget_hide_on_delete), NULL);
+        GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+        gtk_container_set_border_width(GTK_CONTAINER(box), 24);
+        gtk_box_pack_start(GTK_BOX(box), label("Диагностика ввода", "title2", FALSE), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), label("Если где-то Ясно не переключает слова, включите диагностику, напечатайте там несколько слов и выключите её. Журнал покажет, что Ясно увидело и почему ничего не исправило.", "secondary", TRUE), FALSE, FALSE, 0);
+        GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+        diag_toggle = gtk_button_new_with_label("Включить диагностику");
+        gtk_style_context_add_class(gtk_widget_get_style_context(diag_toggle), "suggested-action");
+        g_signal_connect(diag_toggle, "clicked", G_CALLBACK(on_action), GINT_TO_POINTER(YL_ACTION_DIAGNOSTICS));
+        gtk_box_pack_start(GTK_BOX(row), diag_toggle, FALSE, FALSE, 0);
+        GtkWidget *journals = gtk_button_new_with_label("Показать журналы");
+        g_signal_connect(journals, "clicked", G_CALLBACK(on_action), GINT_TO_POINTER(YL_ACTION_JOURNALS));
+        gtk_box_pack_start(GTK_BOX(row), journals, FALSE, FALSE, 0);
+        diag_send = gtk_button_new_with_label("Отправить");
+        g_signal_connect(diag_send, "clicked", G_CALLBACK(on_action), GINT_TO_POINTER(YL_ACTION_SEND_JOURNALS));
+        gtk_box_pack_start(GTK_BOX(row), diag_send, FALSE, FALSE, 0);
+        diag_events = label("", "caption", FALSE);
+        gtk_box_pack_end(GTK_BOX(row), diag_events, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), row, FALSE, FALSE, 0);
+        diag_message = label("", "caption", TRUE);
+        gtk_label_set_selectable(GTK_LABEL(diag_message), TRUE);
+        gtk_box_pack_start(GTK_BOX(box), diag_message, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL), FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), label("Куда отправлять", "headline", FALSE), FALSE, FALSE, 0);
+        diag_repo = gtk_entry_new();
+        gtk_entry_set_placeholder_text(GTK_ENTRY(diag_repo), "Приватный репозиторий: владелец/имя");
+        gtk_box_pack_start(GTK_BOX(box), diag_repo, FALSE, FALSE, 0);
+        GtkWidget *token_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+        diag_token_label = label("", "caption", TRUE);
+        gtk_box_pack_start(GTK_BOX(token_row), diag_token_label, TRUE, TRUE, 0);
+        diag_replace = gtk_check_button_new_with_label("Заменить токен");
+        g_signal_connect(diag_replace, "toggled", G_CALLBACK(replace_toggled), NULL);
+        gtk_box_pack_end(GTK_BOX(token_row), diag_replace, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), token_row, FALSE, FALSE, 0);
+        diag_token = gtk_entry_new();
+        gtk_entry_set_visibility(GTK_ENTRY(diag_token), FALSE);
+        gtk_entry_set_placeholder_text(GTK_ENTRY(diag_token), "Новый токен (пусто — удалить)");
+        gtk_box_pack_start(GTK_BOX(box), diag_token, FALSE, FALSE, 0);
+        diag_hint = label("Fine-grained token на github.com → Settings → Developer settings: доступ только к этому приватному репозиторию, Contents: Read and write.", "caption", TRUE);
+        gtk_box_pack_start(GTK_BOX(box), diag_hint, FALSE, FALSE, 0);
+        GtkWidget *save_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+        diag_save = gtk_button_new_with_label("Сохранить");
+        g_signal_connect(diag_save, "clicked", G_CALLBACK(diagnostics_save), NULL);
+        gtk_box_pack_end(GTK_BOX(save_row), diag_save, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(box), save_row, FALSE, FALSE, 0);
+        gtk_container_add(GTK_CONTAINER(diagnostics_window), box);
+        gtk_widget_show_all(box);
+        gtk_widget_set_visible(diag_token, FALSE);
+        gtk_widget_set_visible(diag_hint, FALSE);
+        apply_state();
+    }
+    gtk_window_present(GTK_WINDOW(diagnostics_window));
+}
+
+int yl_ui_confirm(const char *title, const char *text, const char *ok) {
+    GtkWidget *dialog = gtk_message_dialog_new(NULL, GTK_DIALOG_MODAL, GTK_MESSAGE_QUESTION, GTK_BUTTONS_NONE, "%s", title);
+    gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(dialog), "%s", text);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), "Отмена", GTK_RESPONSE_CANCEL);
+    gtk_dialog_add_button(GTK_DIALOG(dialog), ok, GTK_RESPONSE_ACCEPT);
+    gtk_dialog_set_default_response(GTK_DIALOG(dialog), GTK_RESPONSE_ACCEPT);
+    gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
+    int answer = gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT;
+    gtk_widget_destroy(dialog);
+    return answer;
 }
 
 static GtkWidget *feature(const char *icon, const char *title, const char *subtitle) {
@@ -310,6 +423,9 @@ static void build_window(GtkApplication *app) {
     GtkWidget *exceptions = gtk_button_new_with_label("Исключения…");
     g_signal_connect(exceptions, "clicked", G_CALLBACK(show_exceptions), NULL);
     gtk_box_pack_end(GTK_BOX(login_row), exceptions, FALSE, FALSE, 0);
+    GtkWidget *diagnostics = gtk_button_new_with_label("Диагностика…");
+    g_signal_connect(diagnostics, "clicked", G_CALLBACK(on_action), GINT_TO_POINTER(YL_ACTION_SHOW_DIAGNOSTICS));
+    gtk_box_pack_end(GTK_BOX(login_row), diagnostics, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), login_row, FALSE, FALSE, 0);
 
     update_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
@@ -332,7 +448,7 @@ static void build_window(GtkApplication *app) {
     GtkWidget *shield = gtk_image_new_from_icon_name("security-high-symbolic", GTK_ICON_SIZE_MENU);
     gtk_style_context_add_class(gtk_widget_get_style_context(shield), "footer");
     gtk_box_pack_start(GTK_BOX(footer), shield, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(footer), label("На вашем компьютере · без истории ввода", "footer", FALSE), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(footer), label("На вашем компьютере · без истории ввода, кроме диагностики", "footer", FALSE), FALSE, FALSE, 0);
     corrections_label = label("Исправлено: 0", "footer", FALSE);
     gtk_box_pack_end(GTK_BOX(footer), corrections_label, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), footer, FALSE, FALSE, 0);

@@ -21,6 +21,8 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 
+use serde_json::{json, Map, Value};
+
 use crate::detector::Detector;
 use crate::layout::{KeyStroke, KeyboardLayout};
 use crate::shift_tap::ShiftTapGesture;
@@ -119,6 +121,8 @@ pub struct Answer {
     pub gated: bool,
     /// The replacement and the layout it is in.
     pub correction: Option<(String, String)>,
+    /// Why there is none, for the diagnostic journal.
+    pub reason: Option<&'static str>,
 }
 
 /// What the shell knows at the moment of a call.
@@ -138,8 +142,8 @@ pub const SWITCH_LIMIT: u64 = 1000;
 pub const PAUSE: u64 = 600;
 const WATCHDOG_TICK: u64 = 100;
 
-#[derive(Clone, Copy, Debug)]
-struct Gate { version: u64, since: u64, cancelled: bool }
+#[derive(Clone, Debug)]
+struct Gate { version: u64, since: u64, cancelled: bool, word: String }
 
 #[derive(Clone, Debug)]
 struct Switch { target: String, since: u64 }
@@ -172,6 +176,12 @@ pub struct Engine {
     pub corrections: u64,
     /// Why the last edit could not switch the layout, for the settings window.
     pub switch_failed: bool,
+    /// Input diagnostics are on: what is decided for each word is noted for the journal.
+    diagnostics: bool,
+    /// Typed text in notes is replaced by this (a password field, a field not checked yet).
+    redact: Option<&'static str>,
+    notes: Vec<Map<String, Value>>,
+    unknown_layout_noted: bool,
 }
 
 impl Engine {
@@ -181,15 +191,51 @@ impl Engine {
             shifts: HashSet::new(), ctrl: HashSet::new(), alt: HashSet::new(), win: HashSet::new(),
             caps: false, caps_down: false, gate: None, flight: None, queue: VecDeque::new(), as_text: HashSet::new(),
             switch: None, last_layout: None, next_batch: 1, effects: Vec::new(), enabled: true, editable: true, ready: true,
-            corrections: 0, switch_failed: false,
+            corrections: 0, switch_failed: false, diagnostics: false, redact: None, notes: Vec::new(),
+            unknown_layout_noted: false,
         }
     }
 
     pub fn layouts(&self) -> &Arc<Vec<KeyboardLayout>> { &self.layouts }
 
     pub fn set_layouts(&mut self, layouts: Arc<Vec<KeyboardLayout>>) {
+        self.drop_word("layout list changed");
         self.layouts = layouts;
         self.typing.reset();
+    }
+
+    /// Diagnostics on or off (docs/diagnostics.md). Off, nothing is noted.
+    pub fn set_diagnostics(&mut self, on: bool) {
+        self.diagnostics = on;
+        if !on { self.notes.clear(); }
+    }
+
+    /// What replaces typed text in notes about the focused field; None records it.
+    pub fn set_redact(&mut self, why: Option<&'static str>) { self.redact = why; }
+
+    /// The notes made so far, for the journal, in order.
+    pub fn take_notes(&mut self) -> Vec<Map<String, Value>> { std::mem::take(&mut self.notes) }
+
+    /// Notes an event; the fields are built only while diagnostics are on.
+    fn note(&mut self, event: &str, fields: impl FnOnce(&Engine) -> Value) {
+        if !self.diagnostics { return; }
+        let Value::Object(mut row) = fields(self) else { return };
+        if let Some(why) = self.redact { crate::diagnostics::redact(&mut row, why); }
+        row.insert("event".into(), event.into());
+        self.notes.push(row);
+    }
+
+    /// The word being typed is given up: the journal says why.
+    fn drop_word(&mut self, reason: &str) {
+        if !self.typing.in_word() { return; }
+        self.note("word_dropped", |e| json!({"reason": reason, "text": e.typing.word(), "layout": e.typing.layout_id()}));
+    }
+
+    /// A word checked when it was finished, as every note about it shows it.
+    fn word_fields(&self, text: &str, live: bool, extra: Value) -> Value {
+        let mut row = json!({"text": text, "layout": self.typing.layout_id(), "live": live});
+        if let (Value::Object(row), Value::Object(extra)) = (&mut row, extra) { row.extend(extra); }
+        row
     }
 
     /// The effects produced so far, to perform in order.
@@ -197,13 +243,17 @@ impl Engine {
 
     pub fn set_caps_lock(&mut self, on: bool) { self.caps = on; }
     pub fn set_ready(&mut self, ready: bool) { self.ready = ready; }
-    pub fn set_editable(&mut self, editable: bool) { self.editable = editable; if !editable { self.typing.reset(); } }
+    pub fn set_editable(&mut self, editable: bool) {
+        self.editable = editable;
+        if !editable { self.drop_word("field cannot be edited"); self.typing.reset(); }
+    }
 
     /// Paused, an excluded or elevated application: keys pass untouched and nothing is kept.
     pub fn set_enabled(&mut self, enabled: bool, ctx: Context) {
         if self.enabled == enabled { return; }
         self.enabled = enabled;
         if !enabled {
+            self.drop_word("monitoring off");
             self.typing.reset();
             self.gesture.reset();
             self.cancel_gate();
@@ -223,8 +273,11 @@ impl Engine {
     /// Waiting for the window to apply a layout Yasno selected.
     fn switching(&self) -> bool { self.switch.is_some() && !self.switch_failed }
 
-    /// A click or another focus: the caret may be anywhere now.
-    pub fn caret_moved(&mut self) {
+    /// A click: the caret may be anywhere now.
+    pub fn caret_moved(&mut self) { self.lose_caret("mouse click"); }
+
+    fn lose_caret(&mut self, reason: &str) {
+        self.drop_word(reason);
         self.typing.reset();
         self.gesture.cancel();
         if let Some(g) = self.gate.as_mut() { g.cancelled = true; }
@@ -232,7 +285,7 @@ impl Engine {
 
     /// Another field or window has the focus.
     pub fn focus_changed(&mut self, ctx: Context) {
-        self.caret_moved();
+        self.lose_caret("focus changed");
         self.gesture.reset();
         self.switch = None;
         self.last_layout = ctx.layout.map(str::to_string);
@@ -253,6 +306,10 @@ impl Engine {
             } else if ctx.now.saturating_sub(s.since) > SWITCH_LIMIT {
                 // The window ignores the request. The rest of the word is still typed in the
                 // new layout, as text; the next word starts in the window's own layout.
+                if !self.switch_failed {
+                    let target = s.target.clone();
+                    self.note("layout_not_selected", |_| json!({"target": target, "current": ctx.layout}));
+                }
                 self.switch_failed = true;
                 if !self.typing.in_word() { self.switch = None; }
             }
@@ -270,12 +327,17 @@ impl Engine {
     }
 
     fn watchdog(&mut self, ctx: &Context) {
-        if let Some(g) = self.gate {
-            if ctx.now.saturating_sub(g.since) > GATE_LIMIT { self.gate = None; }
+        if let Some(g) = &self.gate {
+            if ctx.now.saturating_sub(g.since) > GATE_LIMIT {
+                let word = g.word.clone();
+                self.gate = None;
+                self.note("skipped", |e| e.word_fields(&word, false, json!({"reason": "the check took longer than 0.5 s: keys released as typed"})));
+            }
         }
         if let Some((_, since)) = self.flight {
             if ctx.now.saturating_sub(since) > FLIGHT_LIMIT {
                 // What was sent did not come back: the field may not hold what the model says.
+                self.note("stall", |e| json!({"reason": "keys Yasno sent did not come back within 1 s", "text": e.typing.word()}));
                 self.flight = None;
                 self.typing.reset();
             }
@@ -337,10 +399,15 @@ impl Engine {
         self.watch_layout(&ctx);
         let mut batch = Vec::new();
         if answer.gated {
-            let Some(gate) = self.gate else { return };
+            // No gate: the watchdog released the keys and noted it.
+            let Some(gate) = self.gate.clone() else { return };
             if gate.version != answer.version { return; }
             self.gate = None;
-            if !gate.cancelled { self.correct(&answer, &mut batch, &ctx); }
+            if gate.cancelled {
+                self.note("skipped", |e| e.word_fields(&gate.word, false, json!({"reason": "click or focus change during the check"})));
+            } else {
+                self.correct(&answer, &mut batch, &ctx);
+            }
             self.drain(&mut batch, &ctx);
             self.send(batch, &ctx);
         } else {
@@ -352,14 +419,36 @@ impl Engine {
     }
 
     fn correct(&mut self, answer: &Answer, batch: &mut Vec<Output>, ctx: &Context) {
-        if !self.enabled || !self.editable { return; }
-        let Some((replacement, target)) = answer.correction.clone() else { return };
+        let live = !answer.gated;
+        let word = if self.diagnostics { self.typing.word().to_string() } else { String::new() };
+        if !self.enabled || !self.editable {
+            let reason = if self.enabled { "field cannot be edited" } else { "monitoring off" };
+            self.note("skipped", |e| e.word_fields(&word, live, json!({"reason": reason})));
+            return;
+        }
+        let Some((replacement, target)) = answer.correction.clone() else {
+            // A check while typing is answered only with a correction.
+            if !live {
+                let reason = answer.reason.unwrap_or("no correction");
+                self.note("no_suggestion", |e| e.word_fields(&word, false, json!({"reason": reason})));
+            }
+            return;
+        };
         let decision = Decision { version: self.typing.version(), replacement, target_id: target };
         let layouts = self.layouts.clone();
         let all: Vec<&KeyboardLayout> = layouts.iter().collect();
+        let layout = self.typing.layout_id().to_string();
         if let Some(edit) = self.typing.apply(&decision, &all) {
             self.corrections += 1;
+            let deletions = edit.deletions;
+            self.note("edit", |_| json!({"result": "sent", "text": word, "layout": layout, "live": live,
+                                         "replacement": decision.replacement, "target": decision.target_id,
+                                         "deletions": deletions}));
             self.edit(edit, batch, ctx);
+        } else {
+            self.note("skipped", |e| e.word_fields(&word, live, json!({
+                "reason": "the replacement cannot be typed over the word", "replacement": decision.replacement,
+                "target": decision.target_id})));
         }
     }
 
@@ -405,8 +494,13 @@ impl Engine {
         if send_key { batch.push(d.output); }
         if let Some(edit) = d.edit { self.edit(edit, batch, ctx); }
         if let Some(check) = d.check {
+            if !check.while_typing {
+                let (text, gated, ready) = (check.text.clone(), d.gated, self.ready);
+                self.note("word", |e| e.word_fields(&text, false, json!({
+                    "suffix": " ", "live_converted": check.live_converted, "held": gated, "dictionaries_loaded": ready})));
+            }
             if d.gated {
-                self.gate = Some(Gate { version: check.version, since: ctx.now, cancelled: false });
+                self.gate = Some(Gate { version: check.version, since: ctx.now, cancelled: false, word: check.text.clone() });
                 self.effects.push(Effect::Detect { check, gated: true });
                 self.effects.push(Effect::Start(Timer::Watchdog, WATCHDOG_TICK));
             } else {
@@ -461,7 +555,7 @@ impl Engine {
                 self.track_modifiers(key);
                 self.gesture.cancel();
                 // A shortcut may move the caret or change the text.
-                if key.down { self.typing.reset(); }
+                if key.down { self.drop_word("shortcut with Ctrl, Alt or Win"); self.typing.reset(); }
                 return raw;
             }
             vk::CAPITAL => { self.track_modifiers(key); self.gesture.cancel(); return raw; }
@@ -469,12 +563,19 @@ impl Engine {
         }
         if !key.down { return raw; }
         self.gesture.cancel();
-        let Some(layout_id) = self.model_layout(ctx).map(str::to_string) else {
+        let layouts = self.layouts.clone();
+        let layout = self.model_layout(ctx).and_then(|id| layouts.iter().find(|l| l.id == id));
+        let Some(layout) = layout else {
+            self.drop_word("the window's keyboard layout is not one of Yasno's");
+            if !self.unknown_layout_noted {
+                self.unknown_layout_noted = true;
+                self.note("skipped", |e| json!({"reason": "the window's keyboard layout is not one of Yasno's",
+                                                 "window_layout": ctx.layout, "layouts": e.layouts.iter().map(|l| l.id.as_str()).collect::<Vec<_>>()}));
+            }
             self.typing.reset();
             return raw;
         };
-        let layouts = self.layouts.clone();
-        let Some(layout) = layouts.iter().find(|l| l.id == layout_id) else { self.typing.reset(); return raw };
+        self.unknown_layout_noted = false;
         let modified = !(self.ctrl.is_empty() && self.alt.is_empty() && self.win.is_empty());
         let k = match key.vk {
             _ if modified => Key::Navigation,
@@ -497,8 +598,35 @@ impl Engine {
             }
             self.effects.push(Effect::Start(Timer::Pause, PAUSE));
         }
+        let before = (self.diagnostics && self.typing.in_word())
+            .then(|| (self.typing.word().to_string(), self.typing.layout_id().to_string()));
+        let check = self.typing.key(k, layout);
+        if let Some((word, word_layout)) = before {
+            if k != Key::Backspace && !self.typing.word().starts_with(word.as_str()) {
+                let reason = match k {
+                    Key::Navigation if modified => "shortcut with Ctrl, Alt or Win",
+                    Key::Navigation => "navigation key (arrow, Home, End, Esc, Delete, F-key)",
+                    Key::Enter => "Enter: the word is not checked",
+                    Key::Tab => "Tab: the word is not checked",
+                    Key::Char(s) if layout.character(s.key, s.shift, s.caps_lock).is_none() => "key without a character in the layout",
+                    Key::Char(s) if layout.is_dead_key(s.key, s.shift, s.caps_lock) => "dead key",
+                    Key::Char(_) => "layout changed in the middle of the word",
+                    _ => "reset",
+                };
+                let vk = key.vk;
+                self.note("word_dropped", |_| json!({"reason": reason, "text": word, "layout": word_layout, "vk": vk}));
+            }
+        }
         // Nothing is checked for a field that cannot be edited.
-        let check = self.typing.key(k, layout).filter(|_| self.editable);
+        let check = match check {
+            Some(c) if !self.editable => {
+                if !c.while_typing {
+                    self.note("skipped", |e| e.word_fields(&c.text, false, json!({"reason": "field cannot be edited"})));
+                }
+                None
+            }
+            c => c,
+        };
         let gated = check.as_ref().is_some_and(|c| !c.while_typing) && self.ready;
         Delivered { output, check, gated, edit: None }
     }

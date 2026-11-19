@@ -469,6 +469,10 @@ final class AppModel: ObservableObject {
             Diagnostics.note("skipped", Self.diagnostic(token, live: whileTyping, ["reason": "another edit in progress"]))
             return
         }
+        // The edit's time counts from the moment input is held, not from when the worker gets to it:
+        // queue wait, mayCorrect and the focus lookup used to come on top of the 0.5 s budget and
+        // could pass the 1 s capture watchdog in a slow field, which pauses Ясно everywhere.
+        let gateStart = ProcessInfo.processInfo.systemUptime
         worker.async { [self] in
             defer { DispatchQueue.main.async { self.monitor.endGate(revision: token.revision) } }
             guard self.monitor.revision == token.revision else { return }
@@ -478,7 +482,16 @@ final class AppModel: ObservableObject {
                                                                                       "spelling": self.correctSpelling]))
                 return
             }
-            let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
+            let deadline = gateStart + AccessibleEditor.operationTimeout
+            /// Out of time before an AX stage: the word stays as typed, input is released.
+            func outOfTime(_ stage: String) -> Bool {
+                guard ProcessInfo.processInfo.systemUptime >= deadline else { return false }
+                Trace.correction.info("out of time before \(stage, privacy: .public) pid=\(token.pid) live=\(whileTyping) held=\(Trace.milliseconds(since: gateStart)) ms")
+                Diagnostics.note("skipped", Self.diagnostic(token, live: whileTyping, ["reason": "out of time before \(stage)",
+                                                                                      "held_ms": Trace.milliseconds(since: gateStart)]))
+                return true
+            }
+            guard !outOfTime("focus lookup") else { return }
             let lookupStart = ProcessInfo.processInfo.systemUptime
             guard self.monitor.revision == token.revision,
                   let editor = AccessibleEditor.focused(pid: token.pid) else {
@@ -489,6 +502,14 @@ final class AppModel: ObservableObject {
                 return
             }
             let lookup = Trace.milliseconds(since: lookupStart)
+            // Checked before any further AX request: a blocked field costs no canvas or panel lookup.
+            if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
+               ProcessInfo.processInfo.systemUptime < blocked.until {
+                Trace.correction.info("live correction skipped pid=\(token.pid): field blocked for \(Int(blocked.until - ProcessInfo.processInfo.systemUptime)) s more")
+                Diagnostics.note("skipped", Self.diagnostic(token, live: true, ["reason": "live corrections blocked in this field after a caret timeout"]))
+                return
+            }
+            guard !outOfTime("canvas check") else { return }
             let canvasStart = ProcessInfo.processInfo.systemUptime
             if editor.isCanvasTypingTarget {
                 Trace.correction.info("canvas field pid=\(token.pid) live=\(whileTyping) focusMoved=\(token.focusMoved) lookup=\(lookup) ms canvas=\(Trace.milliseconds(since: canvasStart)) ms")
@@ -518,12 +539,7 @@ final class AppModel: ObservableObject {
                 }
                 return
             }
-            if whileTyping, let blocked = self.liveBlocked, CFEqual(blocked.element, editor.element),
-               ProcessInfo.processInfo.systemUptime < blocked.until {
-                Trace.correction.info("live correction skipped pid=\(token.pid): field blocked for \(Int(blocked.until - ProcessInfo.processInfo.systemUptime)) s more")
-                Diagnostics.note("skipped", Self.diagnostic(token, live: true, ["reason": "live corrections blocked in this field after a caret timeout"]))
-                return
-            }
+            guard !outOfTime("caret wait") else { return }
             let suffix = token.text + token.suffix
             // Key delivery and AX updates are asynchronous. Confirm the exact suffix
             // while later physical input is held, including a word with no trailing space.
@@ -552,6 +568,7 @@ final class AppModel: ObservableObject {
             }
             Trace.correction.info("caret found pid=\(token.pid) live=\(whileTyping) lookup=\(lookup) ms canvas=\(canvas) ms wait=\(Trace.milliseconds(since: caretStart)) ms")
             let suffixRange = CFRange(location: caret.location - suffix.utf16.count, length: suffix.utf16.count)
+            guard !outOfTime("context read") else { return }
             let contextCount = min(suffixRange.location, 256)
             let context = contextCount > 0
                 ? editor.text(in: CFRange(location: suffixRange.location - contextCount, length: contextCount)) ?? "" : ""
@@ -657,7 +674,9 @@ final class AppModel: ObservableObject {
                         physicalKeys: [KeyboardLayout.KeyStroke]? = nil, keystrokeSuffix: String? = nil,
                         panel: Bool = false) {
         switch result {
-        case .success:
+        case .success, .replaced:
+            // `.replaced`: the text is changed, only the caret after it was not confirmed. The layout
+            // must still follow the word; a later Shift re-checks the caret and refuses if it moved.
             // `panel`: the field takes keys in an Open/Save panel service (read on the worker, see
             // keyReceiver). The panel keeps its own layout: the next keys start a new word.
             // The word just typed is gone from the field: a later Shift or Backspace must
@@ -785,10 +804,11 @@ final class AppModel: ObservableObject {
         // Reserve on Shift release, before returning to the input stream. Reserving from
         // the worker allowed the following key to invalidate the requested conversion.
         guard monitor.beginGate(revision: revision) else { return }
+        let gateStart = ProcessInfo.processInfo.systemUptime
         worker.async { [weak self] in
             guard let self else { return }
             defer { DispatchQueue.main.async { self.monitor.endGate(revision: revision) } }
-            let deadline = ProcessInfo.processInfo.systemUptime + AccessibleEditor.operationTimeout
+            let deadline = gateStart + AccessibleEditor.operationTimeout
             func switchOnly() {
                 // A known typed word means "convert this word", never silently switch
                 // only the layout because a busy renderer has not exposed its caret yet.
@@ -850,7 +870,7 @@ final class AppModel: ObservableObject {
                                             stillValid: { self.monitor.revision == revision && !IsSecureEventInputEnabled() },
                                             commit: { self.monitor.commitGate(revision: revision) }, deadline: deadline, receiver: receiver)
                 DispatchQueue.main.async {
-                    if case .success = result {
+                    if result == .success || result == .replaced {
                         guard let origin = layouts.first(where: { $0.id == receipt.sourceID }) else { return }
                         let compatible = KeyboardLayout.cycleOrder(layouts).filter { origin.convert(receipt.original, to: $0) != nil }
                         self.receipt = Receipt(editor: editor, original: receipt.original, replacement: receipt.original,

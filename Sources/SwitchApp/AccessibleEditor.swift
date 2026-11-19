@@ -80,9 +80,21 @@ struct AccessibleEditor {
         let chromium = ["company.thebrowser.Browser", "company.thebrowser.dia", "com.google.Chrome", "com.microsoft.edgemac",
                         "com.brave.Browser", "org.chromium.Chromium"].contains(bundleID ?? "")
         if chromium || manualSettable { return "AXManualAccessibility" as CFString }
-        guard let bundleURL, embedsChromium(bundleURL) else { return nil }
+        guard let bundleURL, embedsChromiumCached(bundleURL) else { return nil }
         let enhancedOnly = ["com.openai.codex"].contains(bundleID ?? "")
         return (enhancedOnly ? "AXEnhancedUserInterface" : "AXManualAccessibility") as CFString
+    }
+
+    /// A native application is never recorded as prepared, so it is looked at on every activation:
+    /// the walk over its Frameworks/*/Helpers is remembered per bundle for the life of the process.
+    private static var chromiumBundles: [String: Bool] = [:]
+    static func embedsChromiumCached(_ bundle: URL) -> Bool {
+        let key = bundle.standardizedFileURL.path
+        preparedLock.lock(); let known = chromiumBundles[key]; preparedLock.unlock()
+        if let known { return known }
+        let found = embedsChromium(bundle)
+        preparedLock.lock(); chromiumBundles[key] = found; preparedLock.unlock()
+        return found
     }
 
     /// Chromium keeps its renderer helpers inside the bundle: next to the frameworks in
@@ -122,8 +134,10 @@ struct AccessibleEditor {
     static func typingApplication() -> NSRunningApplication? {
         let front = NSWorkspace.shared.frontmostApplication
         guard !blind else { return front }
+        // The timeout of the system-wide element is process-wide: it is set once at launch
+        // (AppModel), never here. Setting 0.05 here from main while focused() set 0.12 from the
+        // worker made every AX request get whichever value won the race.
         let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.05)
         var raw: CFTypeRef?
         var pid: pid_t = 0
         guard AXUIElementCopyAttributeValue(system, kAXFocusedApplicationAttribute as CFString, &raw) == .success,
@@ -149,8 +163,7 @@ struct AccessibleEditor {
         }
         // The system focus follows remote Cocoa views used by browser shells. Never
         // accept an element owned by an unrelated application during a focus race.
-        let system = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(system, 0.12)
+        let system = AXUIElementCreateSystemWide() // process-wide timeout, see typingApplication()
         let global = focusedElement(of: system)
         let element: AXUIElement
         if let global, belongsToApplication(global, pid: pid) { element = global }

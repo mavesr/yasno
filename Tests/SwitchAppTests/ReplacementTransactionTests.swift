@@ -182,6 +182,19 @@ final class ReplacementTransactionTests: XCTestCase {
         }
     }
 
+    func testConfirmedTextWithAnUnconfirmedCaretIsReplacedNotFailed() {
+        // The renderer shows the new word, then never confirms the caret move after it.
+        let editor = Editor("ghbdtn ", caret: CFRange(location: 7, length: 0))
+        editor.onInsert = { editor.confirmsSelection = false }
+        XCTAssertEqual(editor.run(), .replaced)
+        XCTAssertEqual(editor.value, "привет ")
+        // The caret cannot even be set: still replaced, the text is what counts.
+        let refusing = Editor("ghbdtn ", caret: CFRange(location: 7, length: 0))
+        refusing.onInsert = { refusing.acceptsSelection = false }
+        XCTAssertEqual(refusing.run(), .replaced)
+        XCTAssertEqual(refusing.value, "привет ")
+    }
+
     func testAnOperationDeadlineIsSharedAcrossAcknowledgementPhases() {
         let editor = Editor("ghbdtn ", caret: CFRange(location: 7, length: 0))
         editor.confirmsInsertion = false

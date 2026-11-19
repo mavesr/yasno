@@ -35,6 +35,22 @@ final class UpdaterTests: XCTestCase {
         XCTAssertFalse(Updater.missedCheck(lastCheck: date(28, 21, 2), now: date(28, 23), calendar: calendar))
     }
 
+    func testNextFireKeepsAnEarlierCatchUpAndHonoursANetworkRetry() {
+        let now = date(28, 23)
+        // A missed 21:00: caught up five minutes after launch or wake.
+        XCTAssertEqual(Updater.nextFire(now: now, lastCheck: date(27, 21, 1), pending: nil, retry: nil, calendar: calendar),
+                       now.addingTimeInterval(300))
+        // A second wake two minutes later keeps the catch-up already due, it does not push it.
+        let pending = now.addingTimeInterval(180)
+        XCTAssertEqual(Updater.nextFire(now: now, lastCheck: date(27, 21, 1), pending: pending, retry: nil, calendar: calendar), pending)
+        // After a network failure the retry decides, not another five-minute catch-up.
+        let retry = now.addingTimeInterval(900)
+        XCTAssertEqual(Updater.nextFire(now: now, lastCheck: date(27, 21, 1), pending: nil, retry: retry, calendar: calendar), retry)
+        // Nothing missed: the next 21:00.
+        XCTAssertEqual(Updater.nextFire(now: date(28, 10), lastCheck: date(27, 21, 1), pending: nil, retry: nil, calendar: calendar),
+                       date(28, 21))
+    }
+
     func testRepositoryComesOnlyFromTheWebsiteEdition() {
         XCTAssertEqual(Updater.repository(info: ["YasnoUpdateRepository": "mavesr/yasno"], sandboxed: false), "mavesr/yasno")
         XCTAssertNil(Updater.repository(info: ["YasnoUpdateRepository": "mavesr/yasno"], sandboxed: true))

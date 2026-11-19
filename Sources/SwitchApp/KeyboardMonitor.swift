@@ -701,10 +701,13 @@ final class KeyboardMonitor {
                 if previous.suffix.count > 1 {
                     completedToken = Token(text: previous.text, suffix: String(previous.suffix.dropLast()),
                         sourceID: previous.sourceID, pid: previous.pid, revision: revision,
-                        liveConverted: previous.liveConverted, physicalKeys: previous.physicalKeys)
+                        liveConverted: previous.liveConverted, physicalKeys: previous.physicalKeys,
+                        focusMoved: previous.focusMoved)
                 } else {
                     completedToken = nil
                     token = previous.text; physicalKeys = previous.physicalKeys; liveConverted = previous.liveConverted
+                    // The word continues as it was: keys of it may still have gone to another field.
+                    focusMovedDuringWord = previous.focusMoved
                     onProgress?(snapshot(revision: revision))
                 }
             }
@@ -729,7 +732,7 @@ final class KeyboardMonitor {
             } else if let previous = completedToken, previous.suffix.count < 8 {
                 completedToken = Token(text: previous.text, suffix: previous.suffix + " ",
                     sourceID: previous.sourceID, pid: previous.pid, revision: revision, liveConverted: previous.liveConverted,
-                    physicalKeys: previous.physicalKeys)
+                    physicalKeys: previous.physicalKeys, focusMoved: previous.focusMoved)
             } else { completedToken = nil }
             token = ""; physicalKeys = []; liveConverted = false; return
         }
@@ -772,17 +775,22 @@ final class KeyboardMonitor {
     /// session stream behind the keys already delivered: a direct post to the application
     /// could overtake a Space still on its way, and nothing can confirm the result.
     static func typeKeystrokes(_ edit: KeystrokeEdit) -> Bool {
-        guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
+        // Every event is made before the first Backspace is posted: a failure to make one
+        // must leave the word as typed, never erased with nothing typed in its place.
+        guard CGPreflightPostEventAccess(), let source = editSource(), let insertSource = editSource(),
+              let insertion = unicodeEvents(edit.insertion, source: insertSource) else { return false }
+        var events: [CGEvent] = []
         for _ in 0..<edit.deletions {
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: true),
                   let up = CGEvent(keyboardEventSource: source, virtualKey: 51, keyDown: false) else { return false }
             for event in [down, up] {
                 event.flags = []
                 event.setIntegerValueField(.eventSourceUserData, value: editTag)
-                event.post(tap: .cgSessionEventTap)
+                events.append(event)
             }
         }
-        return post(unicode: edit.insertion) { $0.post(tap: .cgSessionEventTap) }
+        for event in events + insertion { event.post(tap: .cgSessionEventTap) }
+        return true
     }
 
     /// Press these keys as if typed: for a window that sends on keys, not the text of an event.
@@ -822,18 +830,25 @@ final class KeyboardMonitor {
     }
 
     private static func post(unicode text: String, with deliver: (CGEvent) -> Void) -> Bool {
-        guard CGPreflightPostEventAccess(), let source = editSource() else { return false }
+        guard CGPreflightPostEventAccess(), let source = editSource(),
+              let events = unicodeEvents(text, source: source) else { return false }
+        events.forEach(deliver)
+        return true
+    }
+
+    /// Key down and up for each chunk of `text`, in posting order; nil if any cannot be made.
+    private static func unicodeEvents(_ text: String, source: CGEventSource) -> [CGEvent]? {
+        var events: [CGEvent] = []
         for chunk in unicodeChunks(text) {
             guard let down = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { return false }
+                  let up = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) else { return nil }
             for event in [down, up] {
                 event.flags = []
                 event.setIntegerValueField(.eventSourceUserData, value: editTag)
                 event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
             }
-            deliver(down)
-            deliver(up)
+            events += [down, up]
         }
-        return true
+        return events
     }
 }

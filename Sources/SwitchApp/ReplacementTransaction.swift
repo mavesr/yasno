@@ -3,7 +3,9 @@ import Foundation
 /// Production editing state machine, with AX/clock/input effects supplied separately.
 /// Tests exercise this same transaction with a virtual editor and clock, never a user app.
 enum ReplacementTransaction {
-    enum Result: Equatable { case success, stale, unsupported, failed }
+    /// `replaced`: the field confirmed the new text, only the caret move after it was not
+    /// confirmed in time. The word is changed, so callers treat it as done, not as a failure.
+    enum Result: Equatable { case success, replaced, stale, unsupported, failed }
     struct Environment {
         let selection: () -> CFRange?
         let text: (CFRange) -> String?
@@ -48,10 +50,12 @@ enum ReplacementTransaction {
         while !applied(), valid(), e.now() < editDeadline { e.pause() }
         guard valid(), e.focused(), applied() else { restoreIfOwned(); return .failed }
         let finalCaret = CFRange(location: caretLocation(after: range, replacement: replacement, caret: caret), length: 0)
-        guard valid(), e.select(finalCaret) else { return .failed }
+        // From here on the text is in the field. A slow renderer can use up the shared budget on
+        // selection and insertion and leave too little for the caret: that is not a failed edit.
+        guard valid(), e.select(finalCaret) else { return .replaced }
         let caretDeadline = min(deadline, e.now() + e.timeout)
         while !same(e.selection(), finalCaret), valid(), e.now() < caretDeadline { e.pause() }
-        guard valid(), e.focused(), same(e.selection(), finalCaret) else { return .failed }
+        guard valid(), e.focused(), same(e.selection(), finalCaret) else { return .replaced }
         return .success
     }
 

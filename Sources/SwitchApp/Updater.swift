@@ -74,13 +74,32 @@ import os
         return lastCheck < latest
     }
 
+    /// Automatic checks that failed on the network since the last completed one. A short outage
+    /// (Wi-Fi not up yet after wake) is retried after 15 and 60 minutes instead of waiting a day.
+    private var networkRetries = 0
+    nonisolated static let networkRetryDelays: [TimeInterval] = [900, 3600]
+
+    /// When the next automatic check fires: a pending retry, a missed 21:00 caught up a few minutes
+    /// after launch or wake, else the next 21:00. A check already due earlier is kept, so short
+    /// wake sessions (lid opened for a minute) no longer push the catch-up further every time.
+    nonisolated static func nextFire(now: Date, lastCheck: Date?, pending: Date?, retry: Date?,
+                                     calendar: Calendar = .current) -> Date {
+        var fire: Date
+        if let retry, retry > now { fire = min(retry, nextCheck(after: now, calendar: calendar)) }
+        else if missedCheck(lastCheck: lastCheck, now: now, calendar: calendar) { fire = now.addingTimeInterval(300) }
+        else { fire = nextCheck(after: now, calendar: calendar) }
+        if let pending, pending > now, pending < fire { fire = pending }
+        return fire
+    }
+
+    private var retryAt: Date?
+
     private func schedule() {
+        let pending = timer?.isValid == true ? timer?.fireDate : nil
         timer?.invalidate(); timer = nil
         guard available, automatic else { return }
-        let now = Date()
         let last = UserDefaults.standard.object(forKey: "lastUpdateCheck") as? Date
-        // A missed 21:00 is caught up a few minutes after launch or wake, once the network is up.
-        let fire = Self.missedCheck(lastCheck: last, now: now) ? now.addingTimeInterval(300) : Self.nextCheck(after: now)
+        let fire = Self.nextFire(now: Date(), lastCheck: last, pending: pending, retry: retryAt)
         let timer = Timer(fire: fire, interval: 0, repeats: false) { [weak self] _ in MainActor.assumeIsolated { self?.check(automatic: true) } }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
@@ -103,6 +122,18 @@ import os
     }
 
     private func finishCheck(_ result: Result<Release?, UpdateError>, automatic: Bool) {
+        if automatic, case .failure(.network(let reason)) = result, networkRetries < Self.networkRetryDelays.count {
+            // Not recorded as a check: a missed 21:00 stays missed and is caught up after the next wake too.
+            retryAt = Date().addingTimeInterval(Self.networkRetryDelays[networkRetries])
+            networkRetries += 1
+            busy = false
+            message = ""
+            log.error("Update check failed on the network (\(reason, privacy: .public)); retry \(self.networkRetries) scheduled")
+            schedule()
+            return
+        }
+        networkRetries = 0
+        retryAt = nil
         UserDefaults.standard.set(Date(), forKey: "lastUpdateCheck")
         switch result {
         case .success(nil):

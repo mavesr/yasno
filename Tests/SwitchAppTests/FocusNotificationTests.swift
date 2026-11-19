@@ -57,6 +57,20 @@ final class FocusNotificationTests: XCTestCase {
         XCTAssertEqual(rig.completed.first?.focusMoved, true, "the word is marked: a blind edit cannot verify where its keys went")
     }
 
+    func testTheMarkSurvivesExtraSpacesAndBackspaceBackIntoTheWord() async throws {
+        let rig = Rig(layouts: try layouts())
+        rig.send(try key(privet[0])); await flush()
+        rig.monitor.focusChanged()
+        for code in privet.dropFirst() { rig.send(try key(code)) }
+        // Two spaces, then both erased: the word is back at the caret, and still marked.
+        rig.send(try key(49)); rig.send(try key(49)); await flush()
+        rig.send(try key(51)); rig.send(try key(51)); await flush(); await flush()
+        XCTAssertEqual(rig.progress.last?.text, "ghbdtn")
+        XCTAssertEqual(rig.progress.last?.focusMoved, true, "keys of the reopened word may still have gone to another field")
+        rig.send(try key(49)); await flush(); await flush()
+        XCTAssertEqual(rig.completed.last?.focusMoved, true)
+    }
+
     func testTheNextWordIsNotMarked() async throws {
         let rig = Rig(layouts: try layouts())
         rig.send(try key(privet[0])); await flush()

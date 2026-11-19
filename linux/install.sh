@@ -43,7 +43,9 @@ if [ -n "$missing" ]; then
     say "Устанавливаю недостающие пакеты:$missing"
     if command -v apt-get >/dev/null 2>&1; then
         de=hunspell-de-de; apt-cache show hunspell-de-de >/dev/null 2>&1 || de=hunspell-de-de-frami
-        as_root apt-get install -y libgtk-3-0 libxkbcommon0 libhunspell-1.7-0 hunspell-ru hunspell-uk hunspell-en-us $de || true
+        pkgs="libgtk-3-0 libxkbcommon0 libhunspell-1.7-0 hunspell-ru hunspell-uk hunspell-en-us $de"
+        # Stale package lists give "Unable to locate package": refresh them once and retry.
+        as_root apt-get install -y $pkgs || { as_root apt-get update && as_root apt-get install -y $pkgs; } || true
     elif command -v dnf >/dev/null 2>&1; then
         as_root dnf install -y gtk3 libxkbcommon hunspell hunspell-ru hunspell-uk hunspell-en-US hunspell-de || true
     elif command -v zypper >/dev/null 2>&1; then
@@ -54,16 +56,31 @@ if [ -n "$missing" ]; then
     else
         say "Установите сами: GTK 3, libxkbcommon, Hunspell и словари ru_RU, uk_UA, en_US."
     fi
+    still=""
+    have_lib libgtk-3.so.0 || still="$still GTK"
+    have_lib libxkbcommon.so.0 || still="$still libxkbcommon"
+    have_lib libhunspell-1.7.so.0 || still="$still Hunspell"
+    have_dict ru_RU || still="$still словарь-ru"
+    have_dict uk_UA || still="$still словарь-uk"
+    have_dict en_US || still="$still словарь-en"
+    [ -z "$still" ] || say "Не удалось установить:$still. Без них Ясно распознаёт слова хуже; поставьте их и перезапустите Ясно."
 fi
 
 # 2. Stop a running copy, then put the new one in place.
-pkill -u "$(id -u)" -x yasno 2>/dev/null && sleep 1 || true
+# Wait until it is really gone: one still holding its name on the bus takes over the new copy's start.
+if pkill -u "$(id -u)" -x yasno 2>/dev/null; then
+    i=0; while [ $i -lt 50 ] && pgrep -u "$(id -u)" -x yasno >/dev/null 2>&1; do sleep 0.1; i=$((i + 1)); done
+    pkill -KILL -u "$(id -u)" -x yasno 2>/dev/null || true
+fi
 mkdir -p "$ROOT" "$BIN" "$DATA/applications" "$DATA/icons/hicolor/scalable/apps" "$ROOT/icons"
 rm -rf "$APP.new"
 cp -a "$HERE/app" "$APP.new"
 touch "$APP.new/.yasno-install"
-rm -rf "$APP"
-mv "$APP.new" "$APP"
+# Swapped, never removed first: an interrupted install keeps a working copy in place.
+rm -rf "$APP.old"
+[ ! -e "$APP" ] || mv "$APP" "$APP.old"
+mv "$APP.new" "$APP" || { [ ! -e "$APP.old" ] || mv "$APP.old" "$APP"; exit 1; }
+rm -rf "$APP.old"
 ln -sf "$APP/yasno" "$BIN/yasno"
 cp "$APP/icons/"*.svg "$DATA/icons/hicolor/scalable/apps/"
 cp "$APP/icons/"*.svg "$ROOT/icons/"

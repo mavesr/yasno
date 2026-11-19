@@ -23,12 +23,15 @@ int yl_dbus_call(int bus, const char *dest, const char *path, const char *iface,
     GError *error = NULL;
     GVariant *result = g_dbus_connection_call_sync(c, dest, path, iface, method, parameters, NULL,
                                                    G_DBUS_CALL_FLAGS_NO_AUTO_START, timeout_ms, NULL, &error);
+    /* g_variant_parse gives a non-floating reference, which call_sync does not consume. */
+    if (parameters) g_variant_unref(parameters);
     if (!result) { if (error) { g_strlcpy(reply, error->message, length); g_error_free(error); } return -3; }
     gchar *text = g_variant_print(result, FALSE);
-    g_strlcpy(reply, text, length);
+    /* A reply cut to fit is not JSON any more: say so instead of reporting success. */
+    gsize needed = g_strlcpy(reply, text, length);
     g_free(text);
     g_variant_unref(result);
-    return 0;
+    return needed < (gsize)length ? 0 : -4;
 }
 
 int yl_dbus_has_name(const char *name) {

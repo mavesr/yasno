@@ -1,0 +1,52 @@
+name: Linux
+
+on:
+  push:
+    paths: ["Sources/SwitchCore/**", "Sources/YasnoLinux/**", "Sources/CYasnoLinux/**", "Sources/LinuxApp/**", "Tests/LinuxAppTests/**", "linux/**", "Package.swift", ".github/workflows/linux.yml"]
+  pull_request:
+    paths: ["Sources/SwitchCore/**", "Sources/YasnoLinux/**", "Sources/CYasnoLinux/**", "Sources/LinuxApp/**", "Tests/LinuxAppTests/**", "linux/**", "Package.swift", ".github/workflows/linux.yml"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish release linux-v<version> from main (never marked Latest: the Mac updater reads releases/latest)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The oldest system the release runs on (glibc 2.35), as linux/build-release.sh asks.
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Libraries
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libxkbcommon-dev libhunspell-dev hunspell-ru hunspell-uk hunspell-en-us hunspell-de-de
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.1"
+      - name: Test (Linux app, SwitchCore)
+        run: swift test --filter "LinuxAppTests|SwitchCoreTests"
+      - name: Release archive
+        run: sh linux/build-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yasno-linux-x86_64
+          path: |
+            dist/yasno-linux-*.tar.gz
+            dist/yasno-linux-*.tar.gz.sha256
+      - name: Publish release linux-v<version> (not Latest)
+        if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/.*current = "\(.*\)".*/\1/p' Sources/YasnoLinux/Version.swift)
+          tag="linux-v$version"
+          gh release create "$tag" --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Ясно для Linux $version" --latest=false \
+            --notes "Ясно для Ubuntu 26.04 (GNOME), x86_64, версия $version. Установка: curl -fsSL https://raw.githubusercontent.com/mavesr/yasno/main/linux/get.sh | sh" \
+            dist/yasno-linux-$version-x86_64.tar.gz dist/yasno-linux-$version-x86_64.tar.gz.sha256
+          gh release view "$tag" --repo "${{ github.repository }}"

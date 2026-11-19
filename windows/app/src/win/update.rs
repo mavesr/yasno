@@ -79,7 +79,12 @@ pub fn install(release: &Release) -> Result<PathBuf, String> {
     if digest != expected { return Err("контрольная сумма не совпала".into()); }
     let new = sibling(&exe, "yasno.new.exe");
     let old = sibling(&exe, "yasno.old.exe");
-    std::fs::write(&new, &data).map_err(|e| format!("запись: {e}"))?;
+    // On disk before it replaces the running copy: a power cut must not leave a half-written yasno.exe.
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&new).map_err(|e| format!("запись: {e}"))?;
+        file.write_all(&data).and_then(|_| file.sync_all()).map_err(|e| format!("запись: {e}"))?;
+    }
     let _ = std::fs::remove_file(&old);
     std::fs::rename(&exe, &old).map_err(|e| format!("замена: {e}"))?;
     if let Err(e) = std::fs::rename(&new, &exe) {

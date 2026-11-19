@@ -79,6 +79,8 @@ struct Job {
 pub struct App {
     hwnd: HWND,
     hkls: Vec<usize>,
+    /// Every layout Windows had at the last check, supported or not.
+    system_hkls: Vec<usize>,
     engine: Engine,
     worker: Sender<Job>,
     pub settings: Settings,
@@ -97,6 +99,8 @@ pub struct App {
     diagnostics: Sender<diagnostics::Command>,
     pub diagnostic: DiagnosticState,
     pub update_busy: bool,
+    /// Automatic checks in a row that could not reach GitHub.
+    update_retries: u8,
     pub update_message: String,
     pub detail: String,
 }
@@ -208,9 +212,9 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
     engine.set_caps_lock(GetKeyState(VK_CAPITAL as i32) & 1 != 0);
     engine.typing.preferred = settings.preferred.clone();
     APP.with(|cell| *cell.borrow_mut() = Some(App {
-        hwnd, hkls, engine, worker: sender, settings, ignored, outbox: Vec::new(), flush_posted: false, target: None,
+        hwnd, hkls, system_hkls: layouts::system_list().into_iter().map(|h| h as usize).collect(), engine, worker: sender, settings, ignored, outbox: Vec::new(), flush_posted: false, target: None,
         excluded: false, elevated: false, last_app: None, field_generation: 0, last_focus: (0, 0, 0), inspector,
-        update_busy: false, update_message: String::new(), detail: String::new(), diagnostics: diagnostic_service, diagnostic,
+        update_busy: false, update_retries: 0, update_message: String::new(), detail: String::new(), diagnostics: diagnostic_service, diagnostic,
     }));
 
     add_tray_icon(hwnd);
@@ -266,19 +270,27 @@ fn worker(jobs: Receiver<Job>, hwnd: usize) {
     while let Ok(first) = jobs.recv() {
         let mut batch = vec![first];
         while let Ok(more) = jobs.try_recv() { batch.push(more); }
-        // Every held check is answered (input waits for it); of the others only the newest matters.
-        let newest_live = batch.iter().rposition(|j| !j.gated);
+        // Every held check is answered (input waits for it); of the others only the newest matters,
+        // and none that a held check after it overtakes: the engine ignores that answer anyway, and
+        // computing it first kept the keys after Space waiting for a whole extra check.
+        let last_gated = batch.iter().rposition(|j| j.gated);
+        let newest_live = batch.iter().rposition(|j| !j.gated).filter(|&i| last_gated.is_none_or(|g| i > g));
         for (i, job) in batch.into_iter().enumerate() {
             if !job.gated && Some(i) != newest_live { continue; }
-            let all: Vec<&KeyboardLayout> = job.layouts.iter().collect();
-            let (correction, reason) = match job.check.request(&all, &job.ignored, job.preferred.as_deref(), job.correct_spelling) {
-                None => (None, Some("layout not known")),
-                Some(r) if !detector.may_correct(&r) => (None, Some("dictionaries see no other layout")),
-                Some(r) => match detector.correction(&r, &job.check.context) {
-                    Some(s) => (Some((s.replacement, s.target.id.clone())), None),
-                    None => (None, Some("no correction")),
-                },
-            };
+            // A panic in one check must not kill the thread: every later word would then wait
+            // for the watchdog and stay uncorrected until Ясно is restarted.
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let all: Vec<&KeyboardLayout> = job.layouts.iter().collect();
+                match job.check.request(&all, &job.ignored, job.preferred.as_deref(), job.correct_spelling) {
+                    None => (None, Some("layout not known")),
+                    Some(r) if !detector.may_correct(&r) => (None, Some("dictionaries see no other layout")),
+                    Some(r) => match detector.correction(&r, &job.check.context) {
+                        Some(s) => (Some((s.replacement, s.target.id.clone())), None),
+                        None => (None, Some("no correction")),
+                    },
+                }
+            }));
+            let (correction, reason) = outcome.unwrap_or((None, Some("the check failed")));
             if correction.is_none() && !job.gated { continue; }
             let answer = Box::new(Answer { version: job.check.version, gated: job.gated, correction, reason });
             unsafe { PostMessageW(hwnd as HWND, WM_APP_ANSWER, 0, Box::into_raw(answer) as LPARAM); }
@@ -493,8 +505,14 @@ impl App {
     }
 
     fn reload_layouts_if_changed(&mut self) {
-        if unsafe { GetKeyboardLayoutList(0, std::ptr::null_mut()) } as usize != self.hkls.len() {
+        // The whole list Windows has, not only Ясно's layouts: a Belarusian layout next to RU/EN
+        // made the counts differ forever and the tables were rebuilt (and the word dropped) every
+        // 5 s; one layout replaced by another kept the count and was never noticed.
+        let system: Vec<usize> = layouts::system_list().into_iter().map(|h| h as usize).collect();
+        if system != self.system_hkls {
+            self.system_hkls = system;
             let (hkls, layouts) = load_layouts();
+            if hkls == self.hkls { return; }
             self.hkls = hkls;
             self.engine.set_layouts(layouts);
             self.collect();
@@ -615,7 +633,12 @@ pub fn set_automatic_updates(on: bool) {
     schedule_update(hwnd);
 }
 
-enum UpdateResult { Current, Installed(String, std::path::PathBuf), Failed(String) }
+/// `Offline`: an automatic check could not reach GitHub (the network not up yet after wake).
+enum UpdateResult { Current, Installed(String, std::path::PathBuf), Failed(String), Offline }
+
+/// An automatic check that could not reach GitHub is retried after an hour, at most this many
+/// times, instead of waiting for the next 21:00.
+const UPDATE_RETRIES: u8 = 3;
 
 /// Check (and install) on another thread; the result comes back as WM_APP_UPDATE.
 pub fn check_for_updates(automatic: bool) {
@@ -633,7 +656,8 @@ pub fn check_for_updates(automatic: bool) {
                 Ok(exe) => UpdateResult::Installed(release.version, exe),
                 Err(e) => UpdateResult::Failed(format!("Обновление {}: {e}", release.version)),
             },
-            Err(e) => UpdateResult::Failed(if automatic { String::new() } else { format!("Не удалось проверить обновления: {e}") }),
+            Err(_) if automatic => UpdateResult::Offline,
+            Err(e) => UpdateResult::Failed(format!("Не удалось проверить обновления: {e}")),
         };
         unsafe { PostMessageW(hwnd as HWND, WM_APP_UPDATE, 0, Box::into_raw(Box::new(result)) as LPARAM); }
     });
@@ -683,17 +707,26 @@ unsafe extern "system" fn window_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
         }
         WM_APP_UPDATE => {
             let result = Box::from_raw(lparam as *mut UpdateResult);
-            with_app(|a| {
+            let retry = with_app(|a| {
                 a.update_busy = false;
+                if matches!(*result, UpdateResult::Offline) && a.update_retries < UPDATE_RETRIES {
+                    // Not recorded as a check: the next one comes in an hour, not tomorrow at 21:00.
+                    a.update_retries += 1;
+                    return true;
+                }
+                a.update_retries = 0;
                 a.settings.last_update_check = Some(update::now());
                 a.settings.save();
                 a.update_message = match &*result {
                     UpdateResult::Current => "Установлена последняя версия.".into(),
                     UpdateResult::Installed(v, _) => format!("Установлена версия {v}. Перезапуск…"),
                     UpdateResult::Failed(e) => e.clone(),
+                    UpdateResult::Offline => String::new(),
                 };
-            });
+                false
+            }).unwrap_or(false);
             window::refresh();
+            if retry { SetTimer(hwnd, TIMER_UPDATE, 3_600_000, None); return 0; }
             if let UpdateResult::Installed(_, exe) = *result {
                 if start(&exe, &["--updated", "--background"]) { DestroyWindow(hwnd); return 0; }
             }

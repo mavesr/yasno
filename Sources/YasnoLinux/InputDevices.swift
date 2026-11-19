@@ -188,8 +188,7 @@ public final class InputDevices {
     private func release(_ device: inout Device) {
         // Keys the desktop has down from the virtual keyboard are released there first.
         hub.releaseAll()
-        for key in hub.heldKeys { sink.key(key, 0) }
-        sink.sync()
+        hub.releaseDelivered()
         _ = yl_grab(device.fd, 0)
         trace("released: \(device.name)")
         device.grabbed = false
@@ -228,6 +227,8 @@ public final class InputDevices {
             for (index, device) in list.enumerated() where ready[index] != 0 {
                 let count = Int(yl_read_events(device.fd, &events, 64))
                 if count < 0 {
+                    // Unplugged: its keys that are down on the virtual keyboard are let go too.
+                    if device.grabbed { hub.releaseAll(); hub.releaseDelivered() }
                     _ = yl_close(device.fd); devices.removeValue(forKey: device.path); continue
                 }
                 let keyboard = device.kind & Int32(YL_KIND_KEYBOARD) != 0

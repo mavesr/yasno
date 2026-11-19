@@ -251,6 +251,12 @@ public final class InputHub {
 
     func progress() { lock.lock(); lastProgress = clock(); lock.unlock() }
 
+    /// The gate is still held for this edit (the watchdog has not released it).
+    func ownsGate(revision: UInt64) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return gated && gateOwner == revision
+    }
+
     func endGate(revision: UInt64?) {
         lock.lock()
         if let revision, gateOwner != revision { lock.unlock(); return }
@@ -308,5 +314,18 @@ public final class InputHub {
         generation &+= 1
         lock.unlock()
         flush(remaining, stalled: false)
+    }
+
+    /// Let go of every key the desktop has down from the virtual keyboard, and forget them: a
+    /// keyboard unplugged (or a Bluetooth one gone) with a key down would otherwise leave it
+    /// pressed there, repeating into the active window, and a remembered Shift would be pressed
+    /// again after the next edit. A real release that arrives later is a harmless extra key-up.
+    func releaseDelivered() {
+        lock.lock()
+        let down = delivered
+        delivered = []
+        for key in down { sink.key(key, 0) }
+        if !down.isEmpty { sink.sync() }
+        lock.unlock()
     }
 }

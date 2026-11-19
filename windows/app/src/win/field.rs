@@ -48,7 +48,12 @@ pub fn inspector(requests: Receiver<Request>, hwnd: usize, message: u32) {
         while let Ok(mut request) = requests.recv() {
             while let Ok(newer) = requests.try_recv() { request = newer; }
             let element = automation.as_ref().and_then(|a| a.GetFocusedElement().ok());
-            let password = element.as_ref().and_then(|e| e.CurrentIsPassword().ok()).map(|b| b.as_bool()).unwrap_or(false);
+            // A field that was found but would not say whether it is a password counts as one:
+            // "could not ask" must never read as "not a password" (fail closed).
+            let password = match &element {
+                Some(e) => e.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(true),
+                None => false,
+            };
             let (description, secret) = match (&element, request.describe) {
                 (Some(e), true) => { let (d, s) = describe(e, password); (Some(d), s) }
                 (None, true) => (Some(json!({"password": password, "automation": automation.is_some(), "focused_element": false})), false),

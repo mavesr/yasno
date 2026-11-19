@@ -319,7 +319,7 @@ public final class Engine {
                     "reason": reason, "replacement": suggestion.replacement, "target": suggestion.target.id]))
                 return
             }
-            let typed = type(edit, typed: token.text, suffix: token.suffix, from: source, in: suggestion.target)
+            let typed = type(edit, typed: token.text, suffix: token.suffix, from: source, in: suggestion.target, gate: token.revision)
             Diagnostics.note("edit", Diagnostics.word(token, live: whileTyping, [
                 "result": typed ? "success" : "failed", "replacement": suggestion.replacement, "target": suggestion.target.id,
                 "deletions": edit.deletions, "layout_after": currentIDSafe()]))
@@ -337,29 +337,40 @@ public final class Engine {
         return KeystrokeEdit(typed: token.text, replacement: suggestion.replacement, suffix: token.suffix)
     }
 
-    /// Worker, inside a committed gate. Erases, selects the target layout and presses the
-    /// replacement with its keys. If the layout cannot be selected, the erased text is typed back.
-    func type(_ edit: KeystrokeEdit, typed: String, suffix: String, from origin: KeyboardLayout, in target: KeyboardLayout) -> Bool {
+    /// Worker, inside a committed gate. Selects the target layout, erases and presses the
+    /// replacement with its keys. The layout comes first: if it cannot be selected nothing has
+    /// been erased. Before erasing and before typing the gate must still be this edit's: a slow
+    /// gnome-shell can let the watchdog release held keys, and typing on would mix the user's
+    /// keys into the middle of the edit.
+    func type(_ edit: KeystrokeEdit, typed: String, suffix: String, from origin: KeyboardLayout, in target: KeyboardLayout,
+              gate: UInt64) -> Bool {
         let caps = hub.capsLock
         let strokes = edit.insertion.compactMap { Self.stroke(for: $0, in: target, capsLock: caps) }
-        let common = typed.count + suffix.count - edit.deletions
-        let erased = String((typed + suffix).dropFirst(max(common, 0)))
-        let restore = erased.compactMap { Self.stroke(for: $0, in: origin, capsLock: caps) }
         trace("type: erase \(edit.deletions) of \(typed.debugDescription)+\(suffix.debugDescription), insert \(edit.insertion.debugDescription) in \(target.id), current \(currentIDSafe())")
         guard strokes.count == edit.insertion.count else { return false }
         typist.settle()
-        typist.erase(edit.deletions)
-        hub.progress()
         var selected = false
-        queue.sync { selected = self.currentID() == target.id || self.selectLayout(target) }
+        var switched = false
+        queue.sync {
+            if self.currentID() == target.id { selected = true } else { selected = self.selectLayout(target); switched = selected }
+        }
         hub.progress()
         trace("type: selected \(selected), now \(currentIDSafe())")
         guard selected else {
             Diagnostics.note("layout_not_selected", ["target": target.id, "current": currentIDSafe(),
-                                                     "backend": backend?.name ?? "none", "restored": restore.count == erased.count])
-            if restore.count == erased.count { typist.press(restore) }
+                                                     "backend": backend?.name ?? "none", "erased": false])
             return false
         }
+        guard hub.ownsGate(revision: gate) else {
+            Diagnostics.note("skipped", ["reason": "input released while the layout was selected: nothing erased",
+                                         "target": target.id])
+            if switched { queue.sync { _ = self.selectLayout(origin) } }
+            return false
+        }
+        typist.erase(edit.deletions)
+        hub.progress()
+        // Erased already: the replacement is typed even if the gate went meanwhile, since
+        // leaving the word erased would be worse. Erasing is a few ms per key, far below the watchdog.
         typist.pause()
         typist.press(strokes)
         hub.progress()
@@ -448,7 +459,7 @@ public final class Engine {
             guard let edit, hub.revision == revision, !secureInput, hub.commitGate(revision: revision) else {
                 trace("shift: no edit \(edit == nil) revision \(hub.revision) vs \(revision)"); return false
             }
-            return self.type(edit, typed: typed, suffix: suffix, from: origin, in: layout)
+            return self.type(edit, typed: typed, suffix: suffix, from: origin, in: layout, gate: revision)
         }
         let current = layouts.first(where: { $0.id == sourceID })
         if let receipt, let keystrokes = receipt.keystrokes, receipt.app == app,

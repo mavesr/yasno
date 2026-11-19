@@ -22,15 +22,20 @@ pub fn id(hkl: HKL) -> String { format!("{:016X}", hkl as usize) }
 
 pub fn langid(hkl: HKL) -> u16 { (hkl as usize & 0xffff) as u16 }
 
-pub fn installed() -> Vec<(HKL, KeyboardLayout)> {
+/// Every keyboard layout Windows has loaded, including those Ясно does not support.
+pub fn system_list() -> Vec<HKL> {
     unsafe {
         let n = GetKeyboardLayoutList(0, std::ptr::null_mut());
         if n <= 0 { return Vec::new(); }
         let mut list: Vec<HKL> = vec![std::ptr::null_mut(); n as usize];
         let n = GetKeyboardLayoutList(n, list.as_mut_ptr());
         list.truncate(n.max(0) as usize);
-        list.into_iter().filter_map(|hkl| read(hkl).map(|l| (hkl, l))).collect()
+        list
     }
+}
+
+pub fn installed() -> Vec<(HKL, KeyboardLayout)> {
+    system_list().into_iter().filter_map(|hkl| read(hkl).map(|l| (hkl, l))).collect()
 }
 
 fn read(hkl: HKL) -> Option<KeyboardLayout> {

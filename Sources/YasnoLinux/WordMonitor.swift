@@ -99,7 +99,13 @@ public final class WordMonitor {
             if event.value == 0 { held.remove(code) } else { held.insert(code) }
         }
         if event.value == 0 && !KeyCodes.modifiers.contains(code) { return }
-        if token.isEmpty, event.value == 1, !KeyCodes.modifiers.contains(code) { onWordStart?() }
+        let navigation: Set<UInt16> = [KeyCodes.enter, 96, 1, 103, 105, 106, 108]
+        // Keys that only end a word never need the desktop's state: no D-Bus call to gnome-shell
+        // (whose main thread also draws the frames) for a held key's repeats, Enter, arrows,
+        // Escape, Tab or a Ctrl/Alt/Super chord. Backspace and Space still sync: they can
+        // reopen the previous word, which must not survive a layout or application change.
+        let startsNothing = event.value == 2 || !clean || code == KeyCodes.tab || navigation.contains(code)
+        if token.isEmpty, event.value == 1, !KeyCodes.modifiers.contains(code), !startsNothing { onWordStart?() }
         guard enabled, !secureInput() else { reset(reason: "monitoring off or password entry"); return }
         if code == KeyCodes.leftShift || code == KeyCodes.rightShift {
             guard event.value != 2 else { return }
@@ -123,8 +129,10 @@ public final class WordMonitor {
         if token.isEmpty {
             liveConverted = false
             physicalKeys = []
-            syncSource(currentSourceID())
-            syncApplication(currentApp())
+            if !startsNothing {
+                syncSource(currentSourceID())
+                syncApplication(currentApp())
+            }
         }
         let revision = hub.bump()
         let mac = KeyCodes.evdevToMac[code]
@@ -151,7 +159,6 @@ public final class WordMonitor {
             }
             return
         }
-        let navigation: Set<UInt16> = [KeyCodes.enter, 96, 1, 103, 105, 106, 108]
         if code == KeyCodes.space || code == KeyCodes.tab || navigation.contains(code) { composing = false }
         if code == KeyCodes.tab, !token.isEmpty {
             let completed = snapshot(revision: revision)

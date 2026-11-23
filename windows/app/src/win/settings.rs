@@ -18,6 +18,8 @@ pub const DEFAULT_EXCLUSIONS: &[&str] = &[
 
 pub struct Settings {
     pub paused: bool,
+    /// Words are switched while typing; off, only a short Shift tap switches a word.
+    pub automatic_switching: bool,
     pub correct_spelling: bool,
     pub exclusions: Vec<String>,
     pub ignored_words: Vec<String>,
@@ -74,12 +76,13 @@ fn list(s: Option<String>) -> Option<Vec<String>> {
 
 impl Settings {
     pub fn load() -> Settings {
-        let mut s = Settings { paused: false, correct_spelling: true,
+        let mut s = Settings { paused: false, automatic_switching: true, correct_spelling: true,
                                exclusions: DEFAULT_EXCLUSIONS.iter().map(|s| s.to_string()).collect(), ignored_words: Vec::new(),
                                automatic_updates: true, last_update_check: None, preferred: None,
                                diagnostic_repo: yasno_core::diagnostics::DEFAULT_REPO.to_string() };
         if let Some(key) = open(KEY) {
             if let Some(v) = get_dword(key, "Paused") { s.paused = v != 0; }
+            if let Some(v) = get_dword(key, "AutomaticSwitching") { s.automatic_switching = v != 0; }
             if let Some(v) = get_dword(key, "CorrectSpelling") { s.correct_spelling = v != 0; }
             if let Some(v) = list(get_string(key, "Exclusions")) { s.exclusions = v; }
             if let Some(v) = list(get_string(key, "IgnoredWords")) { s.ignored_words = v; }
@@ -95,6 +98,7 @@ impl Settings {
     pub fn save(&self) {
         if let Some(key) = open(KEY) {
             set_dword(key, "Paused", self.paused as u32);
+            set_dword(key, "AutomaticSwitching", self.automatic_switching as u32);
             set_dword(key, "CorrectSpelling", self.correct_spelling as u32);
             set_string(key, "Exclusions", &self.exclusions.join(";"));
             set_string(key, "IgnoredWords", &self.ignored_words.join(";"));

@@ -71,12 +71,13 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LP
     match msg {
         WM_PREPARE => {
             // Empty field, the case's layout, nothing remembered from the last case.
+            // wparam 1: automatic switching off for this case (not saved in the settings).
             let edit = EDIT.load(Ordering::SeqCst) as HWND;
             SetWindowTextW(edit, wide("").as_ptr());
             SetForegroundWindow(hwnd);
             SetFocus(edit);
             ActivateKeyboardLayout(lparam as HKL, 0);
-            with_app(|a| { a.engine.caret_moved(); a.engine.typing.preferred = Some(a.engine.layouts().iter()
+            with_app(|a| { a.engine.caret_moved(); a.engine.set_automatic(wparam != 1); a.engine.typing.preferred = Some(a.engine.layouts().iter()
                 .find(|l| l.id.ends_with(&format!("{:04X}", 0x419))).map(|l| l.id.clone()).unwrap_or_default()); });
             0
         }
@@ -153,21 +154,24 @@ fn text() -> String {
     String::from_utf16_lossy(&buf[..n])
 }
 
-struct Case { name: &'static str, start: &'static str, keys: String, expected: String }
+struct Case { name: &'static str, start: &'static str, keys: String, expected: String, manual: bool }
 
 fn cases() -> Vec<Case> {
     let (us, ru, uk) = (layouts::us(), layouts::russian(), layouts::ukrainian());
     let mut v = vec![
-        Case { name: "ru on US", start: US, keys: "ghbdtn rfr ltkf ".into(), expected: "привет как дела ".into() },
-        Case { name: "en on RU", start: RU, keys: "hello world ".into(), expected: "hello world ".into() },
-        Case { name: "valid en stays", start: US, keys: "hello world ".into(), expected: "hello world ".into() },
-        Case { name: "shift tap converts", start: US, keys: "ytn⇧".into(), expected: "нет".into() },
-        Case { name: "shift tap undoes", start: US, keys: "ghbdtn ⇧".into(), expected: "ghbdtn ".into() },
+        Case { name: "ru on US", start: US, keys: "ghbdtn rfr ltkf ".into(), expected: "привет как дела ".into(), manual: false },
+        Case { name: "en on RU", start: RU, keys: "hello world ".into(), expected: "hello world ".into(), manual: false },
+        Case { name: "valid en stays", start: US, keys: "hello world ".into(), expected: "hello world ".into(), manual: false },
+        Case { name: "shift tap converts", start: US, keys: "ytn⇧".into(), expected: "нет".into(), manual: false },
+        Case { name: "shift tap undoes", start: US, keys: "ghbdtn ⇧".into(), expected: "ghbdtn ".into(), manual: false },
+        // Automatic switching off: words stay as typed, a short Shift tap still switches one.
+        Case { name: "auto off stays", start: US, keys: "ghbdtn rfr ytn ".into(), expected: "ghbdtn rfr ytn ".into(), manual: true },
+        Case { name: "auto off shift", start: US, keys: "ghbdtn⇧ vbh ".into(), expected: "привет мир ".into(), manual: true },
     ];
     for (meant, own, start) in [("Привет, мир! Как твои дела? Всё хорошо. ", &ru, US), ("сегодня хорошая погода ", &ru, US),
                                 ("дякую дуже гарно ", &uk, US), ("hello world and some more ", &us, RU)] {
         let keys = own.convert(meant, &us).unwrap();
-        v.push(Case { name: "sentence", start, keys, expected: meant.to_string() });
+        v.push(Case { name: "sentence", start, keys, expected: meant.to_string(), manual: false });
     }
     v
 }
@@ -183,7 +187,7 @@ pub fn drive() -> (String, bool) {
     for case in cases() {
         // Slow typing, fast typing, fast with overlapping keys.
         for (gap, overlap, label) in [(60u64, false, "slow"), (8, false, "fast"), (4, true, "overlap")] {
-            unsafe { SendMessageW(window, WM_PREPARE, 0, hkl_of(case.start) as LPARAM); }
+            unsafe { SendMessageW(window, WM_PREPARE, case.manual as WPARAM, hkl_of(case.start) as LPARAM); }
             std::thread::sleep(Duration::from_millis(400));
             press(&strokes(&case.keys, overlap), gap);
             std::thread::sleep(Duration::from_millis(1500));

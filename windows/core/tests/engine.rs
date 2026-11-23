@@ -477,3 +477,86 @@ fn diagnostics_note_each_finished_word_and_what_was_done() {
     let (_, mut sim) = Sim::new(standard(), US, "ghbdtn ", false).run_slowly();
     assert!(sim.engine.take_notes().is_empty());
 }
+
+fn manual(typed: &str, start: &str, overlap: bool, seed: Option<u64>) -> (String, Sim) {
+    let mut sim = Sim::new(standard(), start, typed, overlap);
+    sim.engine.set_automatic(false);
+    match seed {
+        None => sim.run_slowly(),
+        Some(seed) => { let mut rng = Rng(seed + 401); sim.run_randomly(&mut rng, 1 + seed % 3) }
+    }
+}
+
+#[test]
+fn automatic_switching_off_leaves_words_as_typed() {
+    // Nothing is converted while typing, at Space, or after a pause.
+    let (text, sim) = manual("ghbdtn rfr ltkf ", US, false, None);
+    assert_eq!(text, "ghbdtn rfr ltkf ");
+    assert_eq!(sim.app.layout, US);
+    assert_eq!(sim.engine.corrections, 0);
+    assert_eq!(manual("ytn", US, false, None).0, "ytn");
+    assert_eq!(manual("ghbdtn? ", US, false, None).0, "ghbdtn? ");
+    // Typos are not corrected either.
+    assert_eq!(manual("helo wrold ", US, false, None).0, "helo wrold ");
+}
+
+#[test]
+fn automatic_switching_off_still_switches_a_word_on_a_short_shift_tap() {
+    let (text, sim) = manual("ytn⇧", US, false, None);
+    assert_eq!(text, "нет");
+    assert_eq!(sim.app.layout, RU);
+    // A second tap brings the typed text back.
+    assert_eq!(manual("ytn⇧⇧", US, false, None).0, slow("ytn⇧⇧", US));
+    // After the switch the next word is typed in the new layout and stays as typed.
+    assert_eq!(manual("ghbdtn⇧ vbh ", US, false, None).0, "привет мир ");
+    // Shift in an empty field still selects the next language.
+    let (text, sim) = manual("⇧", US, false, None);
+    assert_eq!(text, "");
+    assert_eq!(sim.app.layout, RU);
+}
+
+#[test]
+fn automatic_switching_off_under_random_timing() {
+    for seed in 0..30u64 {
+        for typed in ["ghbdtn rfr ltkf ", "ytn⇧ ghbdtn ", "ghbdtn⇧ rfr "] {
+            let reference = manual(typed, US, false, None).0;
+            let (text, _) = manual(typed, US, seed % 2 == 0, Some(seed));
+            assert_eq!(text, reference, "seed {seed}: {typed}");
+        }
+    }
+}
+
+#[test]
+fn automatic_switching_turned_off_during_a_check_drops_its_answer() {
+    // «ytn» is short: it is checked only when finished, at Space. Switching is turned off
+    // while the detector is still working on it.
+    assert_eq!(slow("ytn ", US), "нет ");
+    let mut sim = Sim::new(standard(), US, "ytn ", false);
+    while !sim.user.is_empty() || !sim.rit.is_empty() || !sim.posted.is_empty() {
+        sim.now += 5; sim.press(); sim.deliver_one(); sim.ui_one();
+    }
+    assert!(!sim.jobs.is_empty(), "the check at Space was asked for");
+    sim.engine.set_automatic(false);
+    let (text, sim) = sim.finish();
+    assert_eq!(text, "ytn ");
+    assert!(!sim.engine.holding());
+
+    // Turned on again, words are switched as before.
+    let mut sim = Sim::new(standard(), US, "ghbdtn ", false);
+    sim.engine.set_automatic(false);
+    sim.engine.set_automatic(true);
+    assert_eq!(sim.run_slowly().0, "привет ");
+}
+
+#[test]
+fn diagnostics_say_why_a_word_was_left_with_automatic_switching_off() {
+    let mut sim = Sim::new(standard(), US, "ghbdtn ", false);
+    sim.engine.set_automatic(false);
+    sim.engine.set_diagnostics(true);
+    let (_, mut sim) = sim.run_slowly();
+    let notes = sim.engine.take_notes();
+    assert_eq!(notes.len(), 1, "{notes:?}");
+    assert_eq!(notes[0]["event"], "skipped");
+    assert_eq!(notes[0]["reason"], "automatic switching off");
+    assert_eq!(notes[0]["text"], "ghbdtn");
+}

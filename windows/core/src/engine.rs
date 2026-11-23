@@ -169,6 +169,8 @@ pub struct Engine {
     next_batch: u64,
     effects: Vec<Effect>,
     enabled: bool,
+    /// Words are checked and switched while typing. Off, only a short Shift tap switches a word.
+    automatic: bool,
     /// The focused field may be edited: known and not a password field.
     editable: bool,
     /// The detector has loaded its dictionaries: a gate would otherwise wait for the load.
@@ -190,7 +192,7 @@ impl Engine {
             layouts, detector: Detector::default(), typing: Typing::new(), gesture: ShiftTapGesture::new(),
             shifts: HashSet::new(), ctrl: HashSet::new(), alt: HashSet::new(), win: HashSet::new(),
             caps: false, caps_down: false, gate: None, flight: None, queue: VecDeque::new(), as_text: HashSet::new(),
-            switch: None, last_layout: None, next_batch: 1, effects: Vec::new(), enabled: true, editable: true, ready: true,
+            switch: None, last_layout: None, next_batch: 1, effects: Vec::new(), enabled: true, automatic: true, editable: true, ready: true,
             corrections: 0, switch_failed: false, diagnostics: false, redact: None, notes: Vec::new(),
             unknown_layout_noted: false,
         }
@@ -263,6 +265,17 @@ impl Engine {
     }
 
     pub fn enabled(&self) -> bool { self.enabled }
+
+    /// Automatic switching on or off. Off, keys are still followed so a short Shift tap
+    /// switches the word just typed, but nothing is checked or replaced on its own.
+    pub fn set_automatic(&mut self, on: bool) {
+        if self.automatic == on { return; }
+        self.automatic = on;
+        // A check already asked for is ignored when its answer comes (see `correct`).
+        if !on { if let Some(g) = self.gate.as_mut() { g.cancelled = true; } }
+    }
+
+    pub fn automatic(&self) -> bool { self.automatic }
 
     /// Input is held or on its way back.
     pub fn busy(&self) -> bool { self.holding() || self.switch.is_some() }
@@ -386,7 +399,7 @@ impl Engine {
                 if self.holding() || self.switching() { self.effects.push(Effect::Start(Timer::Watchdog, WATCHDOG_TICK)); }
             }
             Timer::Pause => {
-                if !self.enabled || self.busy() { return; }
+                if !self.enabled || !self.automatic || self.busy() { return; }
                 if let Some(check) = self.typing.pause_check() {
                     self.effects.push(Effect::Detect { check, gated: false });
                 }
@@ -404,7 +417,8 @@ impl Engine {
             if gate.version != answer.version { return; }
             self.gate = None;
             if gate.cancelled {
-                self.note("skipped", |e| e.word_fields(&gate.word, false, json!({"reason": "click or focus change during the check"})));
+                let reason = if self.automatic { "click or focus change during the check" } else { "automatic switching off" };
+                self.note("skipped", |e| e.word_fields(&gate.word, false, json!({"reason": reason})));
             } else {
                 self.correct(&answer, &mut batch, &ctx);
             }
@@ -421,8 +435,8 @@ impl Engine {
     fn correct(&mut self, answer: &Answer, batch: &mut Vec<Output>, ctx: &Context) {
         let live = !answer.gated;
         let word = if self.diagnostics { self.typing.word().to_string() } else { String::new() };
-        if !self.enabled || !self.editable {
-            let reason = if self.enabled { "field cannot be edited" } else { "monitoring off" };
+        if !self.enabled || !self.editable || !self.automatic {
+            let reason = if !self.enabled { "monitoring off" } else if !self.editable { "field cannot be edited" } else { "automatic switching off" };
             self.note("skipped", |e| e.word_fields(&word, live, json!({"reason": reason})));
             return;
         }
@@ -622,6 +636,13 @@ impl Engine {
             Some(c) if !self.editable => {
                 if !c.while_typing {
                     self.note("skipped", |e| e.word_fields(&c.text, false, json!({"reason": "field cannot be edited"})));
+                }
+                None
+            }
+            // Automatic switching off: the word is kept for a Shift tap and nothing is checked.
+            Some(c) if !self.automatic => {
+                if !c.while_typing {
+                    self.note("skipped", |e| e.word_fields(&c.text, false, json!({"reason": "automatic switching off"})));
                 }
                 None
             }

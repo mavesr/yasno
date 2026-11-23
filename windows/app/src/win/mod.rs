@@ -63,6 +63,7 @@ const MENU_EXCLUDE: usize = 3;
 const MENU_UPDATE: usize = 4;
 const MENU_DIAGNOSTICS: usize = 5;
 const MENU_DIAGNOSTIC_SETTINGS: usize = 6;
+const MENU_AUTOMATIC: usize = 7;
 const MENU_QUIT: usize = 9;
 
 const CLASS: &str = "YasnoTray";
@@ -209,6 +210,7 @@ unsafe fn main_loop(mutex: HANDLE, show_window: bool, self_test: Option<String>)
     let (hkls, layouts) = load_layouts();
     let mut engine = Engine::new(layouts);
     engine.set_ready(false);
+    engine.set_automatic(settings.automatic_switching);
     engine.set_caps_lock(GetKeyState(VK_CAPITAL as i32) & 1 != 0);
     engine.typing.preferred = settings.preferred.clone();
     APP.with(|cell| *cell.borrow_mut() = Some(App {
@@ -377,6 +379,7 @@ impl App {
         let row = json!({"status": self.status(), "monitoring": self.monitoring(), "paused": self.settings.paused,
                          "layouts": layouts, "installed_layouts": installed, "exclusions": self.settings.exclusions,
                          "ignored_words": self.settings.ignored_words.len(), "correct_spelling": self.settings.correct_spelling,
+                         "automatic_switching": self.settings.automatic_switching,
                          "preferred": self.engine.typing.preferred, "app": self.last_app, "excluded": self.excluded,
                          "elevated_window": self.elevated, "yasno_elevated": token_elevated(unsafe { GetCurrentProcess() }),
                          "corrections": self.corrections()});
@@ -457,6 +460,7 @@ impl App {
         else if self.hkls.len() < 2 { "Нужны две раскладки" }
         else if self.excluded { "Пауза в этом приложении" }
         else if self.elevated { "Окно администратора: Windows не даёт в нём исправлять" }
+        else if !self.settings.automatic_switching { "Работает · только по Shift" }
         else { "Готово к работе" }
     }
 
@@ -483,6 +487,13 @@ impl App {
         self.settings.save();
         self.apply_state();
         update_tray_tip(self.hwnd, paused);
+    }
+
+    pub fn set_automatic_switching(&mut self, on: bool) {
+        self.settings.automatic_switching = on;
+        self.settings.save();
+        self.engine.set_automatic(on);
+        self.note("automatic_switching", || json!({"on": on}));
     }
 
     pub fn set_spelling(&mut self, on: bool) {
@@ -855,10 +866,10 @@ fn remove_tray_icon(hwnd: HWND) {
 }
 
 fn show_menu(hwnd: HWND) {
-    let Some((status, paused, app, excluded, diagnosing)) = with_app(|a| {
+    let Some((status, paused, app, excluded, diagnosing, automatic)) = with_app(|a| {
         let app = a.last_app.clone();
         let excluded = app.as_ref().is_some_and(|n| a.settings.exclusions.contains(n));
-        (a.status(), a.settings.paused, app, excluded, a.diagnostic.enabled)
+        (a.status(), a.settings.paused, app, excluded, a.diagnostic.enabled, a.settings.automatic_switching)
     }) else { return };
     unsafe {
         let menu = CreatePopupMenu();
@@ -866,6 +877,8 @@ fn show_menu(hwnd: HWND) {
         AppendMenuW(menu, MF_SEPARATOR, 0, std::ptr::null());
         AppendMenuW(menu, MF_STRING, MENU_OPEN, wide("Открыть Ясно…").as_ptr());
         AppendMenuW(menu, MF_STRING, MENU_PAUSE, wide(if paused { "Включить" } else { "Приостановить" }).as_ptr());
+        AppendMenuW(menu, MF_STRING | if automatic { MF_CHECKED } else { MF_UNCHECKED }, MENU_AUTOMATIC,
+                    wide("Автопереключение").as_ptr());
         if let Some(app) = app {
             let label = if excluded { format!("Снова работать в {app}") } else { format!("Не работать в {app}") };
             AppendMenuW(menu, MF_STRING, MENU_EXCLUDE, wide(&label).as_ptr());
@@ -900,6 +913,10 @@ fn on_menu(hwnd: HWND, id: usize) {
     match id {
         MENU_OPEN => window::show(),
         MENU_PAUSE => { with_app(|a| { let p = !a.settings.paused; a.set_paused(p); }); window::refresh(); }
+        MENU_AUTOMATIC => {
+            with_app(|a| { let on = !a.settings.automatic_switching; a.set_automatic_switching(on); });
+            window::refresh();
+        }
         MENU_EXCLUDE => toggle_exclusion(),
         MENU_UPDATE => { window::show(); check_for_updates(false); }
         MENU_DIAGNOSTICS => { toggle_diagnostics(std::ptr::null_mut()); window::refresh(); }

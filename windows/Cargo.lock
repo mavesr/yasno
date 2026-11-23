@@ -469,7 +469,7 @@ dependencies = [
 
 [[package]]
 name = "yasno"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "embed-resource",
  "serde_json",
@@ -481,7 +481,7 @@ dependencies = [
 
 [[package]]
 name = "yasno-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "serde_json",
  "unicode-general-category",

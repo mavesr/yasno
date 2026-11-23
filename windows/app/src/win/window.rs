@@ -32,6 +32,7 @@ const ID_UPDATE_TEXT: i32 = 108;
 const ID_DETAIL: i32 = 109;
 const ID_COUNT: i32 = 110;
 const ID_DIAGNOSTICS: i32 = 111;
+const ID_AUTOMATIC: i32 = 112;
 const ID_D_TITLE: i32 = 140;
 const ID_D_STATUS: i32 = 141;
 const ID_D_TOGGLE: i32 = 142;
@@ -175,7 +176,7 @@ pub fn show() {
     }
     fonts();
     register(MAIN_CLASS, Some(main_proc));
-    let hwnd = window(MAIN_CLASS, "Ясно", WIDTH, 630, std::ptr::null_mut());
+    let hwnd = window(MAIN_CLASS, "Ясно", WIDTH, 684, std::ptr::null_mut());
     UI.with(|u| u.borrow_mut().main = Some(hwnd));
     let x = 24;
     let inner = WIDTH - 2 * x;
@@ -198,6 +199,9 @@ pub fn show() {
     }
     control(hwnd, "STATIC", "", SS_ETCHEDHORZ, x, y, inner, 2, 130, 0);
     y += 14;
+    checkbox(hwnd, "Автопереключение", x, y, inner, ID_AUTOMATIC);
+    label(hwnd, "", x + 20, y + 24, inner - 20, 18, ID_AUTOMATIC + ID_GREY, 3);
+    y += 54;
     checkbox(hwnd, "Исправлять опечатки", x, y, inner, ID_SPELLING);
     label(hwnd, "После пробела · только однозначные варианты · короткий Shift — отменить", x + 20, y + 24, inner - 20, 18, ID_GREY + 20, 3);
     y += 54;
@@ -227,18 +231,23 @@ pub fn refresh() {
     refresh_diagnostics();
     let Some(main) = UI.with(|u| u.borrow().main) else { return };
     let Some(state) = with_app(|a| (a.status(), a.monitoring(), a.settings.paused, a.layout_names(), a.settings.correct_spelling,
-                                     a.settings.automatic_updates, a.update_message.clone(), a.update_busy,
+                                     a.settings.automatic_switching, a.settings.automatic_updates, a.update_message.clone(), a.update_busy,
                                      a.detail.clone(), a.corrections(), a.switch_failed())) else { return };
     if let Some(d) = with_app(|a| a.diagnostic.clone()) {
         let text = if d.enabled { format!("Диагностика ввода включена · событий: {}", d.events) } else { "Диагностика ввода выключена".into() };
         set_text(main, ID_GREY + 32, &text);
     }
-    let (status, monitoring, paused, layouts, spelling, automatic, message, busy, detail, count, switch_failed) = state;
+    let (status, monitoring, paused, layouts, spelling, switching, automatic, message, busy, detail, count, switch_failed) = state;
     let status = if monitoring { format!("●  {status}") } else { format!("○  {status}") };
     set_text(main, ID_STATUS, &status);
     set_check(main, ID_ENABLED, !paused);
     set_text(main, ID_LAYOUTS + ID_GREY, &format!("Українська · Русский · English · Deutsch    ({layouts})"));
-    set_check(main, ID_SPELLING, spelling);
+    set_check(main, ID_AUTOMATIC, switching);
+    set_text(main, ID_AUTOMATIC + ID_GREY, if switching { "Слова переключаются сами во время набора и после пробела" }
+                                           else { "Выключено · слово переключает только короткий Shift" });
+    set_check(main, ID_SPELLING, spelling && switching);
+    // Typos are corrected only as part of automatic switching.
+    unsafe { EnableWindow(item(main, ID_SPELLING), switching as i32); }
     set_check(main, ID_AUTOSTART, settings::autostart());
     set_check(main, ID_AUTOUPDATE, automatic);
     unsafe { EnableWindow(item(main, ID_CHECK), (!busy) as i32); }
@@ -295,6 +304,7 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam
             let id = (wparam & 0xffff) as i32;
             match id {
                 ID_ENABLED => { let on = checked(hwnd, ID_ENABLED); with_app(|a| a.set_paused(!on)); }
+                ID_AUTOMATIC => { let on = checked(hwnd, ID_AUTOMATIC); with_app(|a| a.set_automatic_switching(on)); }
                 ID_SPELLING => { let on = checked(hwnd, ID_SPELLING); with_app(|a| a.set_spelling(on)); }
                 ID_AUTOSTART => settings::set_autostart(checked(hwnd, ID_AUTOSTART)),
                 ID_AUTOUPDATE => super::set_automatic_updates(checked(hwnd, ID_AUTOUPDATE)),
